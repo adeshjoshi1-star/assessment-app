@@ -38,13 +38,13 @@ db.exec(`
   );
 `);
 
-const ADMIN_EMAIL = 'test@admin.com';
-const ADMIN_PASSWORD = 'admin123';
+const ADMIN_EMAIL = 'admin@ete.com';
+const ADMIN_PASSWORD = 'chessislive';
 const existingAdmin = db.prepare('SELECT id FROM users WHERE email = ?').get(ADMIN_EMAIL);
 if (!existingAdmin) {
   const hash = bcrypt.hashSync(ADMIN_PASSWORD, 10);
-  db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)').run('Test Admin', ADMIN_EMAIL, hash, 'admin');
-  console.log('Default admin seeded: test@admin.com / admin123');
+  db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)').run('Admin', ADMIN_EMAIL, hash, 'admin');
+  console.log('Default admin seeded: admin@ete.com / chessislive');
 }
 
 app.use(express.json());
@@ -63,31 +63,6 @@ function requireAuth(req, res, next) {
   }
   next();
 }
-
-app.post('/api/register', async (req, res) => {
-  try {
-    const { name, email, password } = req.body;
-    if (!name || !email || !password) {
-      return res.status(400).json({ error: 'All fields are required' });
-    }
-    const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
-    if (existing) {
-      return res.status(409).json({ error: 'Email already registered' });
-    }
-    const hash = await bcrypt.hash(password, 10);
-    const count = db.prepare('SELECT COUNT(*) as count FROM users').get();
-    const role = count.count === 0 ? 'admin' : 'teacher';
-    db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)').run(name, email, hash, role);
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-    req.session.userId = user.id;
-    req.session.role = user.role;
-    req.session.name = user.name;
-    res.json({ success: true, role: user.role, name: user.name });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
 
 app.post('/api/login', async (req, res) => {
   try {
