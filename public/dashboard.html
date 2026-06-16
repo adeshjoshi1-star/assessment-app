@@ -93,6 +93,7 @@
             <option value="Converted">Converted</option>
           </select>
         </label>
+        <button class="btn btn-danger" id="deleteBtn" style="margin-left:auto"><i class="fas fa-trash"></i> Delete</button>
       </div>
       <div id="modalBody"></div>
     </div>
@@ -236,6 +237,21 @@
         });
         const data = await res.json();
         if (data.success) {
+          loadAssessments();
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    });
+
+    document.getElementById('deleteBtn').addEventListener('click', async () => {
+      if (!currentId) return;
+      if (!confirm('Delete this assessment? This cannot be undone.')) return;
+      try {
+        const res = await fetch('/api/assessments/' + currentId, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+          document.getElementById('modal').classList.remove('open');
           loadAssessments();
         }
       } catch (err) {

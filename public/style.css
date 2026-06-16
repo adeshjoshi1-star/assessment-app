@@ -172,6 +172,10 @@ a:hover {
   color: #fff;
 }
 
+.btn-danger:hover {
+  background: #dc2626;
+}
+
 .btn-block {
   width: 100%;
 }
@@ -681,6 +685,9 @@ tbody tr:hover {
 }
 
 .modal-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   margin-bottom: 20px;
 }
 

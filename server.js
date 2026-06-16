@@ -216,6 +216,13 @@ app.get('/api/assessments/:id', requireAuth, (req, res) => {
   res.json(a);
 });
 
+app.delete('/api/assessments/:id', requireAuth, (req, res) => {
+  const a = db.prepare('SELECT id FROM assessments WHERE id = ?').get(req.params.id);
+  if (!a) return res.status(404).json({ error: 'Not found' });
+  db.prepare('DELETE FROM assessments WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
+
 app.patch('/api/assessments/:id/status', requireAuth, (req, res) => {
   const { status } = req.body;
   const valid = ['New', 'Contacted', 'CNR and Messaged', 'Hot/Potential', 'CNR 1', 'CNR 2', 'CNR 3', 'Not Interested', 'Converted'];
