@@ -66,6 +66,7 @@
                 <th>Slot</th>
                 <th>Status</th>
                 <th>Date</th>
+                <th style="width:60px">Action</th>
               </tr>
             </thead>
             <tbody id="tableBody"></tbody>
@@ -167,7 +168,7 @@
 
       const tbody = document.getElementById('tableBody');
       if (filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:40px;color:var(--text-secondary)">No assessments found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-secondary)">No assessments found</td></tr>';
         return;
       }
       tbody.innerHTML = filtered.map(a => `
@@ -176,11 +177,15 @@
           <td>${a.slot}</td>
           <td><span class="status-badge ${statusClass(a.status)}">${a.status}</span></td>
           <td style="color:var(--text-secondary);font-size:0.85rem">${new Date(a.created_at + 'Z').toLocaleDateString()}</td>
+          <td><button class="btn-icon delete-row" data-id="${a.id}" title="Delete"><i class="fas fa-trash"></i></button></td>
         </tr>
       `).join('');
 
       tbody.querySelectorAll('tr').forEach(tr => {
-        tr.addEventListener('click', () => openModal(parseInt(tr.dataset.id)));
+        tr.addEventListener('click', (e) => {
+          if (e.target.closest('.delete-row')) return;
+          openModal(parseInt(tr.dataset.id));
+        });
       });
     }
 
@@ -254,6 +259,20 @@
           document.getElementById('modal').classList.remove('open');
           loadAssessments();
         }
+      } catch (err) {
+        console.error(err);
+      }
+    });
+
+    document.getElementById('tableBody').addEventListener('click', async (e) => {
+      const btn = e.target.closest('.delete-row');
+      if (!btn) return;
+      const id = parseInt(btn.dataset.id);
+      if (!confirm('Delete this assessment? This cannot be undone.')) return;
+      try {
+        const res = await fetch('/api/assessments/' + id, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) loadAssessments();
       } catch (err) {
         console.error(err);
       }

@@ -176,6 +176,22 @@ a:hover {
   background: #dc2626;
 }
 
+.btn-icon {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  transition: background var(--transition), color var(--transition);
+}
+
+.btn-icon:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
 .btn-block {
   width: 100%;
 }
