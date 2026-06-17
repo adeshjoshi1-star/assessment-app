@@ -7,63 +7,74 @@
 }
 
 :root {
-  --bg: #f8f9fc;
-  --surface: #ffffff;
-  --surface-hover: #f1f3f9;
+  --bg: #f3f0ff;
+  --surface: rgba(255, 255, 255, 0.78);
+  --surface-hover: rgba(241, 243, 249, 0.9);
   --text: #1e1b4b;
   --text-secondary: #6b7280;
   --text-muted: #9ca3af;
-  --border: #e5e7eb;
+  --border: rgba(229, 231, 235, 0.5);
   --primary: #6366f1;
   --primary-dark: #4f46e5;
-  --primary-light: #eef2ff;
-  --primary-glow: rgba(99, 102, 241, 0.15);
+  --primary-light: rgba(238, 242, 255, 0.7);
+  --primary-glow: rgba(99, 102, 241, 0.2);
   --success: #10b981;
-  --success-light: #d1fae5;
+  --success-light: rgba(209, 250, 229, 0.7);
   --danger: #ef4444;
-  --danger-light: #fee2e2;
+  --danger-light: rgba(254, 226, 226, 0.7);
   --warning: #f59e0b;
-  --warning-light: #fef3c7;
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.05), 0 2px 4px rgba(0, 0, 0, 0.04);
-  --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.08), 0 4px 10px rgba(0, 0, 0, 0.05);
-  --radius: 12px;
-  --radius-sm: 8px;
-  --radius-xs: 6px;
-  --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  --sidebar-bg: linear-gradient(180deg, #0f0c29 0%, #1a1a3e 50%, #24243e 100%);
-  --sidebar-text: #94a3b8;
+  --warning-light: rgba(254, 243, 199, 0.7);
+  --shadow-sm: 0 1px 3px rgba(99, 102, 241, 0.06);
+  --shadow: 0 2px 8px rgba(99, 102, 241, 0.08), 0 1px 3px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 16px rgba(99, 102, 241, 0.1), 0 2px 6px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 10px 40px rgba(99, 102, 241, 0.12), 0 4px 12px rgba(0, 0, 0, 0.06);
+  --radius: 16px;
+  --radius-sm: 10px;
+  --radius-xs: 8px;
+  --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  --sidebar-bg: rgba(15, 12, 41, 0.85);
+  --sidebar-text: rgba(148, 163, 184, 0.9);
   --sidebar-active: #ffffff;
   --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --mesh-1: #e4e0ff;
+  --mesh-2: #dbeafe;
+  --mesh-3: #fce7f3;
 }
 
 [data-theme="dark"] {
   --bg: #0b0b1a;
-  --surface: #16162a;
-  --surface-hover: #1f1f38;
+  --surface: rgba(22, 22, 42, 0.85);
+  --surface-hover: rgba(31, 31, 56, 0.9);
   --text: #e2e8f0;
   --text-secondary: #94a3b8;
   --text-muted: #64748b;
-  --border: #2d2d4a;
-  --primary-light: #1e1e3a;
-  --primary-glow: rgba(99, 102, 241, 0.08);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.4);
-  --sidebar-bg: linear-gradient(180deg, #0a0a14 0%, #12122a 50%, #1a1a30 100%);
+  --border: rgba(45, 45, 74, 0.4);
+  --primary-light: rgba(30, 30, 58, 0.7);
+  --primary-glow: rgba(99, 102, 241, 0.12);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.2);
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.4);
+  --sidebar-bg: rgba(10, 10, 20, 0.9);
+  --mesh-1: #0f0c29;
+  --mesh-2: #1a1a3e;
+  --mesh-3: #24243e;
 }
 
 body {
   font-family: var(--font);
   background: var(--bg);
+  background-image: radial-gradient(ellipse 80% 60% at 0% 0%, var(--mesh-1) 0%, transparent 60%),
+                    radial-gradient(ellipse 60% 50% at 100% 20%, var(--mesh-2) 0%, transparent 50%),
+                    radial-gradient(ellipse 50% 40% at 50% 100%, var(--mesh-3) 0%, transparent 50%);
+  background-attachment: fixed;
   color: var(--text);
   transition: background var(--transition), color var(--transition);
   min-height: 100vh;
-  line-height: 1.6;
+  line-height: 1.7;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  letter-spacing: 0.01em;
 }
 
 a {
@@ -87,17 +98,20 @@ a:hover {
 
 .auth-card {
   background: var(--surface);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border-radius: var(--radius);
   box-shadow: var(--shadow-lg);
   padding: 44px;
   width: 100%;
   max-width: 420px;
-  transition: background var(--transition), transform 0.3s ease;
+  transition: background var(--transition), transform 0.3s ease, box-shadow var(--transition);
   border: 1px solid var(--border);
 }
 
 .auth-card:hover {
   transform: translateY(-2px);
+  box-shadow: 0 16px 50px rgba(99, 102, 241, 0.15);
 }
 
 .auth-card h1 {
@@ -288,6 +302,8 @@ a:hover {
 .sidebar {
   width: 250px;
   background: var(--sidebar-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   display: flex;
   flex-direction: column;
   position: fixed;
@@ -295,8 +311,8 @@ a:hover {
   left: 0;
   bottom: 0;
   z-index: 100;
-  transition: transform var(--transition);
-  box-shadow: 2px 0 20px rgba(0, 0, 0, 0.1);
+  transition: transform var(--transition), background var(--transition);
+  box-shadow: 2px 0 30px rgba(0, 0, 0, 0.15);
 }
 
 .sidebar-header {
@@ -407,11 +423,13 @@ a:hover {
   gap: 16px;
   padding: 14px 32px;
   background: var(--surface);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
   z-index: 50;
-  transition: background var(--transition);
+  transition: background var(--transition), backdrop-filter var(--transition);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
 }
 
@@ -506,16 +524,19 @@ a:hover {
 
 .form-section {
   background: var(--surface);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   padding: 28px 32px;
   margin-bottom: 20px;
-  transition: background var(--transition), box-shadow var(--transition);
+  transition: background var(--transition), box-shadow var(--transition), transform var(--transition);
   border: 1px solid var(--border);
 }
 
 .form-section:hover {
   box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
 }
 
 .form-section h2 {
@@ -699,13 +720,21 @@ a:hover {
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   border: 1px solid var(--border);
+  background: var(--surface);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: box-shadow var(--transition);
+}
+
+.table-wrap:hover {
+  box-shadow: var(--shadow-md);
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.88rem;
-  background: var(--surface);
+  background: transparent;
 }
 
 thead th {
@@ -791,13 +820,14 @@ tbody tr:nth-child(even):hover {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   z-index: 200;
   align-items: center;
   justify-content: center;
   padding: 20px;
-  animation: fadeIn 0.15s ease;
+  animation: fadeIn 0.2s ease;
 }
 
 .modal-overlay.open {
@@ -816,15 +846,17 @@ tbody tr:nth-child(even):hover {
 
 .modal {
   background: var(--surface);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border-radius: var(--radius);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 20px 60px rgba(99, 102, 241, 0.12), 0 4px 20px rgba(0, 0, 0, 0.08);
   width: 100%;
   max-width: 700px;
   max-height: 90vh;
   overflow-y: auto;
-  padding: 32px;
+  padding: 36px;
   position: relative;
-  animation: slideUp 0.2s ease;
+  animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   border: 1px solid var(--border);
 }
 
