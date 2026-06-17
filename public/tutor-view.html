@@ -220,7 +220,7 @@
             <td>${e.time || '-'}</td>
             <td>${e.age || '-'}</td>
             <td>${e.language || '-'}</td>
-            <td><span class="status-badge ${done || a ? 'Converted' : 'New'}">${a ? 'Demo Done' : (e.demo_status || 'Pending')}</span></td>
+            <td><span class="status-badge ${a ? 'Converted' : e.demo_status.toLowerCase().includes('not done') ? 'DemoNotDone' : 'New'}">${a ? 'Demo Done' : (e.demo_status || 'Pending')}</span></td>
             <td><button class="btn ${a ? 'btn-secondary' : 'btn-primary'}" style="padding:4px 10px;font-size:0.8rem" data-row="${e.row}" onclick="event.stopPropagation();${a ? 'viewAssessmentByRow('+e.row+')' : 'openForm('+e.row+',\''+e.tutor_name.replace(/'/g,"\\'")+'\',\''+e.student_name.replace(/'/g,"\\'")+'\',\''+e.slot.replace(/'/g,"\\'")+'\',\''+e.date.replace(/'/g,"\\'")+'\',\''+e.time.replace(/'/g,"\\'")+'\',\''+(e.phone||'').replace(/'/g,"\\'")+'\',\''+(e.age||'').replace(/'/g,"\\'")+'\',\''+(e.language||'').replace(/'/g,"\\'")+'\')'}">${a ? 'View' : 'Assess'}</button></td>
           </tr>`;
         }).join('');
