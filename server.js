@@ -323,6 +323,15 @@ async function syncSheet() {
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       if (!r[0] || r[0].trim() === '' || r[0] === 'ETE - please don\'t delete') continue;
+      const rawDate = (r[6] || '').trim();
+      if (rawDate) {
+        const parts = rawDate.split('/');
+        if (parts.length === 3) {
+          const d = new Date(parseInt(parts[2]) + 2000, parseInt(parts[1]) - 1, parseInt(parts[0]));
+          const cutoff = new Date(2026, 5, 15);
+          if (d < cutoff) continue;
+        }
+      }
       const statusRow = db.prepare('SELECT status FROM sheet_statuses WHERE row_number = ?').get(i + 1);
       entries.push({
         row: i + 1,
