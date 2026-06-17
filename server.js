@@ -44,9 +44,12 @@ db.exec(`
     date TEXT DEFAULT '',
     time TEXT DEFAULT '',
     status TEXT DEFAULT 'New',
+    sheet_row INTEGER DEFAULT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 `);
+
+try { db.exec('ALTER TABLE assessments ADD COLUMN sheet_row INTEGER DEFAULT NULL'); } catch (e) {}
 
 const ADMIN_EMAIL = 'admin@ete.com';
 const ADMIN_PASSWORD = 'chessislive';
@@ -176,24 +179,29 @@ app.get('/api/topics/:level', (req, res) => {
 
 app.post('/api/assessments', (req, res) => {
   try {
-    const { tutor_name, phone, slot, student_name, student_age, language, level, topics_known, topics_covered, start_topic, revision_topics, feedback, interest_level, additional_remarks, date, time } = req.body;
+    const { tutor_name, phone, slot, student_name, student_age, language, level, topics_known, topics_covered, start_topic, revision_topics, feedback, interest_level, additional_remarks, date, time, sheet_row } = req.body;
     if (!slot || !student_name || !student_age || !language || !level || !feedback || !interest_level) {
       return res.status(400).json({ error: 'Required fields missing' });
     }
     const stmt = db.prepare(`INSERT INTO assessments
-      (user_id, tutor_name, phone, slot, student_name, student_age, language, level, topics_known, topics_covered, start_topic, revision_topics, feedback, interest_level, additional_remarks, date, time)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+      (user_id, tutor_name, phone, slot, student_name, student_age, language, level, topics_known, topics_covered, start_topic, revision_topics, feedback, interest_level, additional_remarks, date, time, sheet_row)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     stmt.run(
       req.session.userId, tutor_name || '', phone || '', slot, student_name, student_age, language, level,
       JSON.stringify(topics_known || []), JSON.stringify(topics_covered || []),
       start_topic || '', JSON.stringify(revision_topics || []),
-      feedback, interest_level, additional_remarks || '', date || '', time || ''
+      feedback, interest_level, additional_remarks || '', date || '', time || '',
+      sheet_row || null
     );
-    appendToSheet({
-      demo_status: 'Demo Done',
-      slot, date, time, tutor_name, student_name,
-      age: student_age, language, phone,
-    });
+    if (sheet_row) {
+      updateSheetRow(sheet_row, 'Demo Done');
+    } else {
+      appendToSheet({
+        demo_status: 'Demo Done',
+        slot, date, time, tutor_name, student_name,
+        age: student_age, language, phone,
+      });
+    }
     res.json({ success: true });
   } catch (err) {
     console.error(err);
@@ -210,6 +218,15 @@ app.get('/api/assessments', requireAuth, (req, res) => {
     list = db.prepare("SELECT id, tutor_name, phone, slot, student_name, student_age, language, level, interest_level, status, date, time, created_at FROM assessments ORDER BY created_at DESC").all();
   }
   res.json(list);
+});
+
+app.get('/api/assessments/by-row/:row', (req, res) => {
+  const a = db.prepare('SELECT * FROM assessments WHERE sheet_row = ? ORDER BY created_at DESC LIMIT 1').get(req.params.row);
+  if (!a) return res.json(null);
+  a.topics_known = JSON.parse(a.topics_known || '[]');
+  a.topics_covered = JSON.parse(a.topics_covered || '[]');
+  a.revision_topics = JSON.parse(a.revision_topics || '[]');
+  res.json(a);
 });
 
 app.get('/api/assessments/:id', requireAuth, (req, res) => {
@@ -275,6 +292,20 @@ function getSheetsClient() {
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
   return google.sheets({ version: 'v4', auth });
+}
+
+async function updateSheetRow(row, status) {
+  try {
+    const sheets = getSheetsClient();
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `'Trial 2.0'!A${row}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [[status]] },
+    });
+  } catch (err) {
+    console.error('Sheet update error:', err.message);
+  }
 }
 
 async function appendToSheet(data) {
@@ -348,8 +379,24 @@ async function syncSheet() {
   }
 }
 
+app.get('/api/sheet-tutors', (req, res) => {
+  const tutors = [...new Set(sheetDataCache.map(e => e.tutor_name).filter(Boolean))].sort();
+  res.json(tutors);
+});
+
+app.get('/api/sheet-tutor/:name', (req, res) => {
+  const tutorName = decodeURIComponent(req.params.name).trim().toLowerCase();
+  const entries = sheetDataCache.filter(e => e.tutor_name.toLowerCase() === tutorName);
+  res.json(entries);
+});
+
 app.get('/api/sheet-data', requireAuth, (req, res) => {
-  res.json({ entries: sheetDataCache, lastSync });
+  let entries = sheetDataCache;
+  if (req.query.tutor) {
+    const t = req.query.tutor.toLowerCase();
+    entries = entries.filter(e => e.tutor_name.toLowerCase() === t);
+  }
+  res.json({ entries, lastSync });
 });
 
 app.patch('/api/sheet-data/:row/status', requireAuth, (req, res) => {

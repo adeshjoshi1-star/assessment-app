@@ -3,9 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>My Assessments</title>
+  <title>Tutor View</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <link rel="stylesheet" href="style.css">
+  <style>
+    .assessment-form-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .assessment-form-grid .full-width { grid-column:1/-1; }
+    .assessment-form-grid label { display:block; font-size:0.8rem; color:var(--text-secondary); margin-bottom:4px; }
+    .assessment-form-grid input, .assessment-form-grid select, .assessment-form-grid textarea {
+      width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm);
+      background:var(--surface); color:var(--text); font-size:0.9rem; box-sizing:border-box;
+    }
+    .assessment-form-grid textarea { min-height:70px; resize:vertical; }
+    .modal .btn { margin-top:16px; }
+  </style>
 </head>
 <body>
   <div class="app-layout">
@@ -16,7 +27,7 @@
       <nav class="sidebar-nav">
         <a href="form.html"><i class="fas fa-edit"></i> New Assessment</a>
         <a href="dashboard.html"><i class="fas fa-list"></i> Submissions</a>
-        <a href="tutor-view.html" class="active"><i class="fas fa-user-graduate"></i> My Assessments</a>
+        <a href="tutor-view.html" class="active"><i class="fas fa-user-graduate"></i> Tutor View</a>
         <a href="analytics.html"><i class="fas fa-chart-pie"></i> Analytics</a>
       </nav>
       <div class="sidebar-footer">
@@ -27,124 +38,222 @@
     <div class="main-area">
       <header class="topbar">
         <button class="hamburger" id="hamburger"><i class="fas fa-bars"></i></button>
-        <span class="topbar-title">My Assessments</span>
+        <span class="topbar-title">Tutor View</span>
         <div class="topbar-right"></div>
       </header>
 
       <div class="content-area">
         <div class="page-header">
-          <h1>My Assessments</h1>
-          <p>View all demo assessments you have submitted.</p>
+          <h1>My Demo Assignments</h1>
+          <p>Select your name to see the demos assigned to you.</p>
         </div>
 
-        <div class="dashboard-controls">
-          <input type="text" id="searchInput" placeholder="Enter your name to see your assessments..." style="flex:1;max-width:400px">
-          <button class="btn btn-primary" id="loadBtn"><i class="fas fa-search"></i> Load My Assessments</button>
-          <span id="countBadge" style="font-size:0.85rem;color:var(--text-secondary);margin-left:auto">0 entries</span>
+        <div style="margin-bottom:16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <label style="font-size:0.9rem;color:var(--text-secondary)"><strong>Select Your Name:</strong></label>
+          <select id="tutorSelect" style="padding:8px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-size:1rem;min-width:220px">
+            <option value="">— Choose —</option>
+          </select>
+          <span id="countBadge" style="font-size:0.85rem;color:var(--text-secondary);margin-left:8px"></span>
         </div>
 
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
+                <th>Student Name</th>
+                <th>Slot</th>
                 <th>Date</th>
                 <th>Time</th>
-                <th>Slot</th>
-                <th>Student Name</th>
-                <th>Status</th>
-                <th style="width:60px">Action</th>
+                <th>Age</th>
+                <th>Language</th>
+                <th>Demo Status</th>
+                <th style="width:90px">Action</th>
               </tr>
             </thead>
-            <tbody id="tableBody"></tbody>
+            <tbody id="tableBody">
+              <tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-secondary)">Select your name above to see your assigned demos.</td></tr>
+            </tbody>
           </table>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="modal-overlay" id="modal">
+  <div class="modal-overlay" id="formModal">
+    <div class="modal" style="max-width:700px">
+      <button class="modal-close" id="formModalClose"><i class="fas fa-times"></i></button>
+      <h2 id="formModalTitle">Demo Assessment</h2>
+      <form id="assessmentForm">
+        <input type="hidden" id="form_sheet_row">
+        <div class="assessment-form-grid">
+          <div class="full-width" style="background:var(--bg-secondary);padding:10px 14px;border-radius:var(--radius-sm);display:flex;gap:16px;flex-wrap:wrap;font-size:0.85rem">
+            <span><strong>Student:</strong> <span id="form_student_name_display"></span></span>
+            <span><strong>Slot:</strong> <span id="form_slot_display"></span></span>
+            <span><strong>Date:</strong> <span id="form_date_display"></span></span>
+            <span><strong>Time:</strong> <span id="form_time_display"></span></span>
+          </div>
+          <div>
+            <label>Tutor Name *</label>
+            <input type="text" id="form_tutor_name" required>
+          </div>
+          <div>
+            <label>Parent Phone</label>
+            <input type="text" id="form_phone">
+          </div>
+          <div>
+            <label>Student Age *</label>
+            <input type="text" id="form_student_age" required>
+          </div>
+          <div>
+            <label>Language *</label>
+            <select id="form_language" required>
+              <option value="">Select</option>
+              <option>Malayalam</option>
+              <option>English</option>
+              <option>Hindi</option>
+              <option>Tamil</option>
+              <option>Manglish</option>
+              <option>Hinglish</option>
+            </select>
+          </div>
+          <div>
+            <label>Level *</label>
+            <select id="form_level" required>
+              <option value="">Select</option>
+              <option>Beginner</option>
+              <option>Intermediate</option>
+              <option>Advanced</option>
+            </select>
+          </div>
+        </div>
+        <div id="form_level_sections" style="margin-top:12px"></div>
+        <div style="margin-top:12px">
+          <label>Feedback About Student's Performance *</label>
+          <textarea id="form_feedback" required style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-size:0.9rem;box-sizing:border-box;min-height:60px;resize:vertical"></textarea>
+        </div>
+        <div style="margin-top:12px">
+          <label>Interest Level *</label>
+          <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap" id="formInterestGroup"></div>
+        </div>
+        <div style="margin-top:12px">
+          <label>Additional Remarks</label>
+          <textarea id="form_remarks" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-size:0.9rem;box-sizing:border-box;min-height:50px;resize:vertical"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary" style="margin-top:16px"><i class="fas fa-paper-plane"></i> Submit Assessment</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="viewModal">
     <div class="modal">
-      <button class="modal-close" id="modalClose"><i class="fas fa-times"></i></button>
-      <h2 id="modalTitle">Assessment Details</h2>
-      <div id="modalBody"></div>
+      <button class="modal-close" id="viewModalClose"><i class="fas fa-times"></i></button>
+      <h2 id="viewModalTitle">Assessment Details</h2>
+      <div id="viewModalBody"></div>
     </div>
   </div>
 
   <script>
-    let assessments = [];
-    let currentId = null;
+    const TOPICS = {
+      Beginner: ['Coordinates','Piece Movements','Value of Pieces','Capture','Check','Escaping Check','Checkmate','Checkmate Patterns','Special moves','All draws','King and queen mate','King and rook mate','Opening principles','Hanging pieces','Counting pieces','Double attack','Skewer','Pin','Discovered attack'],
+      Intermediate: ['Tournament Rules','Phases of the Game','Italian Game','Smothered mate','Sicilian Defense','Desperado and zwichenswang','Windmill','Ruy Lopez','Remove and destroy','Zugzwang','Italian bc5','King opposition','Rook endgames','Naidorf','King and pawn','Passed pawn','d4 Opening Basics','Outpost','Open file','d5/Nf6','Rook 7th rank','Double bishop mate','Reti'],
+      Advanced: []
+    };
 
-    function statusClass(s) {
-      const map = {
-        'New': 'New',
-        'Contacted': 'Contacted',
-        'CNR and Messaged': 'CNR',
-        'Hot/Potential': 'Hot',
-        'CNR 1': 'CNR',
-        'CNR 2': 'CNR',
-        'CNR 3': 'CNR',
-        'Not Interested': 'Not',
-        'Converted': 'Converted'
-      };
-      return map[s] || 'New';
+    let currentSheetRow = null;
+    let currentTutorName = '';
+
+    // Populate interest level buttons
+    (function() {
+      const container = document.getElementById('formInterestGroup');
+      const labels = ['', '', '', 'Interested', 'Highly Interested'];
+      container.innerHTML = [1,2,3,4,5].map(n => `
+        <label style="display:flex;flex-direction:column;align-items:center;padding:8px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;background:var(--surface)">
+          <input type="radio" name="form_interest" value="${n}" required style="margin-bottom:4px">
+          <span style="font-size:0.8rem">${'★'.repeat(n)}${'☆'.repeat(5-n)}</span>
+          <span style="font-size:0.7rem;color:var(--text-secondary)">${labels[n]||''}</span>
+        </label>`).join('');
+    })();
+
+    async function loadTutors() {
+      try {
+        const res = await fetch('/api/sheet-tutors');
+        const tutors = await res.json();
+        const sel = document.getElementById('tutorSelect');
+        sel.innerHTML = '<option value="">— Choose —</option>' + tutors.map(t => `<option value="${t}">${t}</option>`).join('');
+      } catch (e) { console.error(e); }
     }
+    loadTutors();
 
-    function renderTable() {
-      const search = document.getElementById('searchInput').value.toLowerCase();
+    document.getElementById('tutorSelect').addEventListener('change', loadDemos);
 
-      const filtered = assessments.filter(a => {
-        return a.student_name.toLowerCase().includes(search) || a.slot.toLowerCase().includes(search);
-      });
-
-      document.getElementById('countBadge').textContent = filtered.length + ' entr' + (filtered.length === 1 ? 'y' : 'ies');
-
+    async function loadDemos() {
+      const name = document.getElementById('tutorSelect').value;
+      currentTutorName = name;
       const tbody = document.getElementById('tableBody');
-      if (filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-secondary)">No assessments found</td></tr>';
-        return;
-      }
-      tbody.innerHTML = filtered.map(a => `
-        <tr data-id="${a.id}">
-          <td>${a.date || new Date(a.created_at + 'Z').toLocaleDateString()}</td>
-          <td>${a.time || ''}</td>
-          <td>${a.slot}</td>
-          <td><strong>${a.student_name}</strong></td>
-          <td><span class="status-badge ${statusClass(a.status)}">${a.status}</span></td>
-          <td><button class="btn btn-primary" style="padding:4px 12px;font-size:0.8rem" onclick="openModal(${a.id})">View</button></td>
-        </tr>
-      `).join('');
-    }
-
-    async function loadAssessments() {
-      const name = document.getElementById('searchInput').value.trim();
+      const badge = document.getElementById('countBadge');
       if (!name) {
-        alert('Please enter your name to find your assessments.');
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-secondary)">Select your name above to see your assigned demos.</td></tr>';
+        badge.textContent = '';
         return;
       }
       try {
-        const res = await fetch('/api/assessments?tutor=' + encodeURIComponent(name));
-        assessments = await res.json();
-        renderTable();
+        const res = await fetch('/api/sheet-tutor/' + encodeURIComponent(name));
+        const entries = await res.json();
+        badge.textContent = entries.length + ' demo' + (entries.length === 1 ? '' : 's');
+        if (!entries.length) {
+          tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-secondary)">No demos assigned to you yet.</td></tr>';
+          return;
+        }
+        // Check which rows already have assessments
+        const assessmentPromises = entries.map(e =>
+          fetch('/api/assessments/by-row/' + e.row).then(r => r.json()).catch(() => null)
+        );
+        const assessments = await Promise.all(assessmentPromises);
+
+        tbody.innerHTML = entries.map((e, i) => {
+          const a = assessments[i];
+          const done = e.demo_status.toLowerCase().includes('done') || e.demo_status.toLowerCase().includes('completed');
+          return `<tr style="cursor:pointer" data-row="${e.row}">
+            <td><strong>${e.student_name || '-'}</strong></td>
+            <td>${e.slot || '-'}</td>
+            <td>${e.date || '-'}</td>
+            <td>${e.time || '-'}</td>
+            <td>${e.age || '-'}</td>
+            <td>${e.language || '-'}</td>
+            <td><span class="status-badge ${done || a ? 'Converted' : 'New'}">${a ? 'Demo Done' : (e.demo_status || 'Pending')}</span></td>
+            <td><button class="btn ${a ? 'btn-secondary' : 'btn-primary'}" style="padding:4px 10px;font-size:0.8rem" data-row="${e.row}" onclick="event.stopPropagation();${a ? 'viewAssessmentByRow('+e.row+')' : 'openForm('+e.row+',\''+e.tutor_name.replace(/'/g,"\\'")+'\',\''+e.student_name.replace(/'/g,"\\'")+'\',\''+e.slot.replace(/'/g,"\\'")+'\',\''+e.date.replace(/'/g,"\\'")+'\',\''+e.time.replace(/'/g,"\\'")+'\',\''+(e.phone||'').replace(/'/g,"\\'")+'\',\''+(e.age||'').replace(/'/g,"\\'")+'\',\''+(e.language||'').replace(/'/g,"\\'")+'\')'}">${a ? 'View' : 'Assess'}</button></td>
+          </tr>`;
+        }).join('');
       } catch (err) {
-        console.error('Failed to load assessments', err);
+        console.error('Failed to load demos', err);
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-secondary)">Error loading demos.</td></tr>';
       }
     }
 
-    document.getElementById('loadBtn').addEventListener('click', loadAssessments);
-    document.getElementById('searchInput').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') loadAssessments();
+    // Click on row
+    document.getElementById('tableBody').addEventListener('click', async (e) => {
+      const tr = e.target.closest('tr[data-row]');
+      if (!tr || e.target.tagName === 'BUTTON') return;
+      const row = tr.dataset.row;
+      const res = await fetch('/api/assessments/by-row/' + row);
+      const a = await res.json();
+      if (a) {
+        viewAssessmentByRow(row);
+      } else {
+        const btn = tr.querySelector('button');
+        if (btn) btn.click();
+      }
     });
-    document.getElementById('searchInput').addEventListener('input', renderTable);
 
-    async function openModal(id) {
-      currentId = id;
+
+
+    async function viewAssessmentByRow(row) {
       try {
-        const res = await fetch('/api/assessments/' + id);
+        const res = await fetch('/api/assessments/by-row/' + row);
         const a = await res.json();
-        document.getElementById('modalTitle').textContent = a.student_name + ' — ' + a.slot;
-
-        const body = document.getElementById('modalBody');
-        body.innerHTML = `
+        if (!a) return alert('Assessment not found.');
+        document.getElementById('viewModalTitle').textContent = a.student_name + ' — ' + a.slot;
+        document.getElementById('viewModalBody').innerHTML = `
           <div class="modal-field"><label>Tutor</label><div class="value">${a.tutor_name || '—'}</div></div>
           <div class="modal-field"><label>Phone</label><div class="value">${a.phone || '—'}</div></div>
           <div class="modal-field"><label>Demo Date</label><div class="value">${a.date || '—'}</div></div>
@@ -159,21 +268,132 @@
           <div class="modal-field"><label>Feedback</label><div class="value">${a.feedback}</div></div>
           <div class="modal-field"><label>Interest Level</label><div class="value">${'★'.repeat(a.interest_level)}${'☆'.repeat(5-a.interest_level)} (${a.interest_level}/5)</div></div>
           ${a.additional_remarks ? `<div class="modal-field"><label>Additional Remarks</label><div class="value">${a.additional_remarks}</div></div>` : ''}
-          <div class="modal-field"><label>Submitted</label><div class="value">${new Date(a.created_at + 'Z').toLocaleString()}</div></div>
-        `;
-        document.getElementById('modal').classList.add('open');
-      } catch (err) {
-        console.error(err);
-      }
+          <div class="modal-field"><label>Submitted</label><div class="value">${new Date(a.created_at + 'Z').toLocaleString()}</div></div>`;
+        document.getElementById('viewModal').classList.add('open');
+      } catch (err) { console.error(err); }
     }
 
-    document.getElementById('modalClose').addEventListener('click', () => {
-      document.getElementById('modal').classList.remove('open');
+    document.getElementById('viewModalClose').addEventListener('click', () => {
+      document.getElementById('viewModal').classList.remove('open');
+    });
+    document.getElementById('viewModal').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) document.getElementById('viewModal').classList.remove('open');
     });
 
-    document.getElementById('modal').addEventListener('click', (e) => {
-      if (e.target === e.currentTarget) {
-        document.getElementById('modal').classList.remove('open');
+    function buildLevelSection(level) {
+      const topics = TOPICS[level] || [];
+      if (!topics.length) return `<p style="color:var(--text-secondary);font-size:0.85rem">No topic checklists for ${level} level.</p>`;
+      return `
+        <div style="margin-top:12px">
+          <label style="font-weight:600">${level} — Topics Already Known</label>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px" class="cb-group" data-group="known-${level}">
+            ${topics.map(t => `<label style="display:flex;align-items:center;gap:4px;font-size:0.85rem;padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);cursor:pointer"><input type="checkbox" value="${t}"> ${t}</label>`).join('')}
+          </div>
+        </div>
+        <div style="margin-top:10px">
+          <label style="font-weight:600">${level} — Topics Covered During Demo</label>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px" class="cb-group" data-group="covered-${level}">
+            ${topics.map(t => `<label style="display:flex;align-items:center;gap:4px;font-size:0.85rem;padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);cursor:pointer"><input type="checkbox" value="${t}"> ${t}</label>`).join('')}
+          </div>
+        </div>
+        <div style="margin-top:10px">
+          <label for="start_${level}">Recommended Start Topic</label>
+          <input type="text" id="start_${level}" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-size:0.9rem;box-sizing:border-box;margin-top:4px" placeholder="e.g. Start from Functions">
+        </div>
+        <div style="margin-top:10px">
+          <label style="font-weight:600">${level} — Topics Needing Revision</label>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px" class="cb-group" data-group="revision-${level}">
+            ${topics.map(t => `<label style="display:flex;align-items:center;gap:4px;font-size:0.85rem;padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);cursor:pointer"><input type="checkbox" value="${t}"> ${t}</label>`).join('')}
+          </div>
+        </div>`;
+    }
+
+    function openForm(row, tutorName, studentName, slot, date, time, phone, age, language) {
+      currentSheetRow = row;
+      document.getElementById('formModalTitle').textContent = 'Assess: ' + studentName;
+      document.getElementById('form_sheet_row').value = row;
+      document.getElementById('form_student_name_display').textContent = studentName;
+      document.getElementById('form_slot_display').textContent = slot;
+      document.getElementById('form_date_display').textContent = date;
+      document.getElementById('form_time_display').textContent = time;
+      document.getElementById('form_tutor_name').value = tutorName || currentTutorName;
+      document.getElementById('form_phone').value = phone || '';
+      document.getElementById('form_student_age').value = age || '';
+      document.getElementById('form_language').value = language || '';
+      document.getElementById('form_level').value = '';
+      document.getElementById('form_feedback').value = '';
+      document.querySelectorAll('input[name="form_interest"]').forEach(r => r.checked = false);
+      document.getElementById('form_remarks').value = '';
+      document.getElementById('form_level_sections').innerHTML = '';
+      document.getElementById('formModal').classList.add('open');
+    }
+
+    document.getElementById('formModalClose').addEventListener('click', () => {
+      document.getElementById('formModal').classList.remove('open');
+    });
+    document.getElementById('formModal').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) document.getElementById('formModal').classList.remove('open');
+    });
+
+    document.getElementById('form_level').addEventListener('change', function() {
+      const level = this.value;
+      const container = document.getElementById('form_level_sections');
+      if (!level) { container.innerHTML = ''; return; }
+      container.innerHTML = buildLevelSection(level);
+    });
+
+    document.getElementById('assessmentForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const level = document.getElementById('form_level').value;
+      if (!level) return alert('Please select a student level');
+
+      const getChecked = (group) => {
+        const container = document.querySelector(`[data-group="${group}"]`);
+        if (!container) return [];
+        return Array.from(container.querySelectorAll('input:checked')).map(cb => cb.value);
+      };
+
+      const payload = {
+        sheet_row: parseInt(document.getElementById('form_sheet_row').value),
+        tutor_name: document.getElementById('form_tutor_name').value,
+        phone: document.getElementById('form_phone').value,
+        student_name: document.getElementById('form_student_name_display').textContent,
+        slot: document.getElementById('form_slot_display').textContent,
+        date: document.getElementById('form_date_display').textContent,
+        time: document.getElementById('form_time_display').textContent,
+        student_age: document.getElementById('form_student_age').value,
+        language: document.getElementById('form_language').value,
+        level: level,
+        topics_known: getChecked('known-' + level),
+        topics_covered: getChecked('covered-' + level),
+        start_topic: document.getElementById('start_' + level)?.value || '',
+        revision_topics: getChecked('revision-' + level),
+        feedback: document.getElementById('form_feedback').value,
+        interest_level: parseInt(document.querySelector('input[name="form_interest"]:checked')?.value),
+        additional_remarks: document.getElementById('form_remarks').value
+      };
+
+      if (!payload.tutor_name || !payload.student_age || !payload.language || !payload.feedback || !payload.interest_level) {
+        alert('Please fill all required fields');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/assessments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+          alert('Assessment submitted successfully! Demo status updated to "Demo Done".');
+          document.getElementById('formModal').classList.remove('open');
+          loadDemos();
+        } else {
+          alert(data.error || 'Submission failed');
+        }
+      } catch (err) {
+        alert('Server error. Is the server running?');
       }
     });
 

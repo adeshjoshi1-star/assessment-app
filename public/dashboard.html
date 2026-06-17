@@ -37,6 +37,12 @@
           <h1>Demo Tracking</h1>
           <p>Auto-refreshes every 30s. <span id="sheetSyncInfo"></span></p>
         </div>
+        <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center">
+          <label style="font-size:0.85rem;color:var(--text-secondary)">Filter by Tutor:</label>
+          <select id="tutorFilter" style="padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text)">
+            <option value="">All Tutors</option>
+          </select>
+        </div>
         <div class="table-wrap">
           <table>
             <thead>
@@ -61,6 +67,14 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="modal">
+    <div class="modal">
+      <button class="modal-close" id="modalClose"><i class="fas fa-times"></i></button>
+      <h2 id="modalTitle">Assessment Details</h2>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
   <script>
     // Check auth
     (async () => {
@@ -76,6 +90,60 @@
         window.location.href = 'login.html';
       }
     })();
+
+    async function loadTutors() {
+      try {
+        const res = await fetch('/api/sheet-tutors');
+        const tutors = await res.json();
+        const sel = document.getElementById('tutorFilter');
+        sel.innerHTML = '<option value="">All Tutors</option>' + tutors.map(t => `<option value="${t}">${t}</option>`).join('');
+      } catch (e) {}
+    }
+    loadTutors();
+
+    document.getElementById('tutorFilter').addEventListener('change', loadSheetData);
+
+    document.getElementById('sheetTableBody').addEventListener('click', async (e) => {
+      const tr = e.target.closest('tr[data-row]');
+      if (!tr || e.target.tagName === 'SELECT') return;
+      const row = tr.dataset.row;
+      try {
+        const res = await fetch('/api/assessments/by-row/' + row);
+        const a = await res.json();
+        if (!a) {
+          document.getElementById('modalTitle').textContent = 'No Assessment Yet';
+          document.getElementById('modalBody').innerHTML = '<p style="text-align:center;padding:30px;color:var(--text-secondary)">This demo has not been assessed yet.</p>';
+        } else {
+          document.getElementById('modalTitle').textContent = a.student_name + ' — ' + a.slot;
+          document.getElementById('modalBody').innerHTML = `
+            <div class="modal-field"><label>Tutor</label><div class="value">${a.tutor_name || '—'}</div></div>
+            <div class="modal-field"><label>Phone</label><div class="value">${a.phone || '—'}</div></div>
+            <div class="modal-field"><label>Demo Date</label><div class="value">${a.date || '—'}</div></div>
+            <div class="modal-field"><label>Demo Time</label><div class="value">${a.time || '—'}</div></div>
+            <div class="modal-field"><label>Student Age</label><div class="value">${a.student_age}</div></div>
+            <div class="modal-field"><label>Language</label><div class="value">${a.language}</div></div>
+            <div class="modal-field"><label>Level</label><div class="value"><span class="status-badge ${a.level}">${a.level}</span></div></div>
+            ${a.topics_known.length ? `<div class="modal-field"><label>Topics Known</label><div class="topic-chips">${a.topics_known.map(t => `<span class="topic-chip">${t}</span>`).join('')}</div></div>` : ''}
+            ${a.topics_covered.length ? `<div class="modal-field"><label>Topics Covered During Demo</label><div class="topic-chips">${a.topics_covered.map(t => `<span class="topic-chip">${t}</span>`).join('')}</div></div>` : ''}
+            ${a.start_topic ? `<div class="modal-field"><label>Recommended Start Topic</label><div class="value">${a.start_topic}</div></div>` : ''}
+            ${a.revision_topics.length ? `<div class="modal-field"><label>Topics Needing Revision</label><div class="topic-chips">${a.revision_topics.map(t => `<span class="topic-chip">${t}</span>`).join('')}</div></div>` : ''}
+            <div class="modal-field"><label>Feedback</label><div class="value">${a.feedback}</div></div>
+            <div class="modal-field"><label>Interest Level</label><div class="value">${'★'.repeat(a.interest_level)}${'☆'.repeat(5-a.interest_level)} (${a.interest_level}/5)</div></div>
+            ${a.additional_remarks ? `<div class="modal-field"><label>Additional Remarks</label><div class="value">${a.additional_remarks}</div></div>` : ''}
+            <div class="modal-field"><label>Submitted</label><div class="value">${new Date(a.created_at + 'Z').toLocaleString()}</div></div>`;
+        }
+        document.getElementById('modal').classList.add('open');
+      } catch (err) {
+        console.error(err);
+      }
+    });
+
+    document.getElementById('modalClose').addEventListener('click', () => {
+      document.getElementById('modal').classList.remove('open');
+    });
+    document.getElementById('modal').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) document.getElementById('modal').classList.remove('open');
+    });
 
     document.getElementById('sheetTableBody').addEventListener('change', async (e) => {
       if (!e.target.classList.contains('sheet-status-select')) return;
@@ -106,23 +174,26 @@
 
     async function loadSheetData() {
       try {
-        const res = await fetch('/api/sheet-data');
+        const filter = document.getElementById('tutorFilter').value;
+        const url = filter ? '/api/sheet-data?tutor=' + encodeURIComponent(filter) : '/api/sheet-data';
+        const res = await fetch(url);
         const data = await res.json();
         document.getElementById('sheetSyncInfo').textContent = data.lastSync ? 'Last sync: ' + new Date(data.lastSync + 'Z').toLocaleTimeString() : '';
         const tbody = document.getElementById('sheetTableBody');
-        if (!data.entries.length) {
+        const entries = data.entries || [];
+        if (!entries.length) {
           tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:20px;color:var(--text-secondary)">No sheet data found</td></tr>';
           return;
         }
         const statuses = ['New', 'Contacted', 'Demo Done', 'Demo Rescheduled', 'Demo Cancelled', 'Demo Not Done', 'Converted', 'Not Interested'];
-        tbody.innerHTML = data.entries.map(e => `
-          <tr>
+        tbody.innerHTML = entries.map(e => `
+          <tr data-row="${e.row}" style="cursor:pointer">
             <td><strong>${e.student_name || '-'}</strong></td>
             <td>${e.age || '-'}</td>
             <td>${e.language || '-'}</td>
             <td>${e.slot || '-'}</td>
             <td><span class="status-badge ${e.demo_status.toLowerCase().includes('done') ? 'Converted' : 'New'}">${e.demo_status}</span></td>
-            <td><select class="sheet-status-select" data-row="${e.row}" style="padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.8rem;background:var(--surface);color:var(--text)">${statuses.map(s => `<option value="${s}" ${s === e.status ? 'selected' : ''}>${s}</option>`).join('')}</select></td>
+            <td><select class="sheet-status-select" data-row="${e.row}" style="padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.8rem;background:var(--surface);color:var(--text)" onclick="event.stopPropagation()">${statuses.map(s => `<option value="${s}" ${s === e.status ? 'selected' : ''}>${s}</option>`).join('')}</select></td>
             <td>${e.date || '-'}</td>
             <td>${e.time || '-'}</td>
             <td>${e.tutor_name || '-'}</td>
