@@ -759,7 +759,7 @@ tbody tr:nth-child(even):hover {
   text-transform: uppercase;
 }
 
-.status-badge.New { background: #dbeafe; color: #1e40af; }
+.status-badge.New { background: #fef3c7; color: #92400e; }
 .status-badge.Contacted { background: #e0e7ff; color: #3730a3; }
 .status-badge.CNR { background: #fce7f3; color: #9d174d; }
 .status-badge.Hot { background: #fef3c7; color: #92400e; }
@@ -770,7 +770,7 @@ tbody tr:nth-child(even):hover {
 .status-badge.Intermediate { background: #e0e7ff; color: #3730a3; }
 .status-badge.Advanced { background: #fce7f3; color: #9d174d; }
 
-[data-theme="dark"] .status-badge.New { background: #1e3a5f; color: #93c5fd; }
+[data-theme="dark"] .status-badge.New { background: #2d2d1a; color: #fcd34d; }
 [data-theme="dark"] .status-badge.Contacted { background: #2d2d5e; color: #a5b4fc; }
 [data-theme="dark"] .status-badge.CNR { background: #2d1a2d; color: #f9a8d4; }
 [data-theme="dark"] .status-badge.Hot { background: #2d2d1a; color: #fcd34d; }
