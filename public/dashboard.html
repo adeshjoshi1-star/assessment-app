@@ -14,7 +14,8 @@
         <i class="fas fa-clipboard-list"></i> AssessPro
       </div>
       <nav class="sidebar-nav">
-        <a href="dashboard.html" class="active"><i class="fas fa-list"></i> Dashboard</a>
+        <a href="form.html"><i class="fas fa-edit"></i> New Assessment</a>
+        <a href="dashboard.html" class="active"><i class="fas fa-list"></i> Submissions</a>
         <a href="analytics.html"><i class="fas fa-chart-pie"></i> Analytics</a>
       </nav>
       <div class="sidebar-footer">
@@ -33,8 +34,53 @@
 
       <div class="content-area">
         <div class="page-header">
-          <h1>Demo Tracking</h1>
-          <p>Google Sheet — Trial 2.0. Auto-refreshes every 30s. <span id="sheetSyncInfo"></span></p>
+          <h1>Assessments</h1>
+          <p>View and manage all student assessment responses.</p>
+        </div>
+
+        <div class="dashboard-controls">
+          <input type="text" id="searchInput" placeholder="Search by name or slot..." style="flex:1;max-width:300px">
+          <select id="statusFilter">
+            <option value="">All Statuses</option>
+            <option value="New">New</option>
+            <option value="Contacted">Contacted</option>
+            <option value="CNR and Messaged">CNR and Messaged</option>
+            <option value="Hot/Potential">Hot/Potential</option>
+            <option value="CNR 1">CNR 1</option>
+            <option value="CNR 2">CNR 2</option>
+            <option value="CNR 3">CNR 3</option>
+            <option value="Not Interested">Not Interested</option>
+            <option value="Converted">Converted</option>
+          </select>
+          <select id="slotFilter">
+            <option value="">All Slots</option>
+          </select>
+          <select id="tutorFilter">
+            <option value="">All Tutors</option>
+          </select>
+          <span id="countBadge" style="font-size:0.85rem;color:var(--text-secondary);margin-left:auto">0 entries</span>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Time</th>
+                <th>Slot</th>
+                <th>Student Name</th>
+                <th>Tutor</th>
+                <th>Status</th>
+                <th style="width:60px">Action</th>
+              </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+        </div>
+
+        <div class="page-header" style="margin-top:40px">
+          <h2>Google Sheet — Demo Tracking</h2>
+          <p>Auto-refreshes every 30s. <span id="sheetSyncInfo"></span></p>
         </div>
         <div class="table-wrap">
           <table>
@@ -59,7 +105,34 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="modal">
+    <div class="modal">
+      <button class="modal-close" id="modalClose"><i class="fas fa-times"></i></button>
+      <h2 id="modalTitle">Assessment Details</h2>
+      <div class="modal-status">
+        <label>Status:
+          <select id="statusSelect">
+            <option value="New">New</option>
+            <option value="Contacted">Contacted</option>
+            <option value="CNR and Messaged">CNR and Messaged</option>
+            <option value="Hot/Potential">Hot/Potential</option>
+            <option value="CNR 1">CNR 1</option>
+            <option value="CNR 2">CNR 2</option>
+            <option value="CNR 3">CNR 3</option>
+            <option value="Not Interested">Not Interested</option>
+            <option value="Converted">Converted</option>
+          </select>
+        </label>
+        <button class="btn btn-danger" id="deleteBtn" style="margin-left:auto"><i class="fas fa-trash"></i> Delete</button>
+      </div>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
   <script>
+    let assessments = [];
+    let currentId = null;
+
     // Check auth
     (async () => {
       try {
@@ -75,17 +148,143 @@
       }
     })();
 
-    // Hamburger
-    document.getElementById('hamburger').addEventListener('click', () => {
-      document.getElementById('sidebar').classList.toggle('open');
+    // Load slots and tutors for filters
+    (async () => {
+      const [slotsRes, tutorsRes] = await Promise.all([
+        fetch('/api/slots'),
+        fetch('/api/tutors')
+      ]);
+      const slots = await slotsRes.json();
+      const tutors = await tutorsRes.json();
+      document.getElementById('slotFilter').innerHTML = '<option value="">All Slots</option>' + slots.map(s => `<option value="${s}">${s}</option>`).join('');
+      document.getElementById('tutorFilter').innerHTML = '<option value="">All Tutors</option>' + tutors.map(t => `<option value="${t}">${t}</option>`).join('');
+    })();
+
+    async function loadAssessments() {
+      try {
+        const res = await fetch('/api/assessments');
+        assessments = await res.json();
+        renderTable();
+      } catch (err) {
+        console.error('Failed to load assessments', err);
+      }
+    }
+
+    function statusClass(s) {
+      const map = {
+        'New': 'New',
+        'Contacted': 'Contacted',
+        'CNR and Messaged': 'CNR',
+        'Hot/Potential': 'Hot',
+        'CNR 1': 'CNR',
+        'CNR 2': 'CNR',
+        'CNR 3': 'CNR',
+        'Not Interested': 'Not',
+        'Converted': 'Converted'
+      };
+      return map[s] || 'New';
+    }
+
+    function renderTable() {
+      const search = document.getElementById('searchInput').value.toLowerCase();
+      const statusFilter = document.getElementById('statusFilter').value;
+      const slotFilter = document.getElementById('slotFilter').value;
+      const tutorFilter = document.getElementById('tutorFilter').value;
+
+      const filtered = assessments.filter(a => {
+        const matchSearch = a.student_name.toLowerCase().includes(search) || a.slot.toLowerCase().includes(search) || (a.tutor_name || '').toLowerCase().includes(search);
+        const matchStatus = !statusFilter || a.status === statusFilter;
+        const matchSlot = !slotFilter || a.slot === slotFilter;
+        const matchTutor = !tutorFilter || a.tutor_name === tutorFilter;
+        return matchSearch && matchStatus && matchSlot && matchTutor;
+      });
+
+      document.getElementById('countBadge').textContent = filtered.length + ' entr' + (filtered.length === 1 ? 'y' : 'ies');
+
+      const tbody = document.getElementById('tableBody');
+      if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text-secondary)">No assessments found</td></tr>';
+        return;
+      }
+      tbody.innerHTML = filtered.map(a => `
+        <tr data-id="${a.id}">
+          <td>${a.date || new Date(a.created_at + 'Z').toLocaleDateString()}</td>
+          <td>${a.time || ''}</td>
+          <td>${a.slot}</td>
+          <td><strong>${a.student_name}</strong></td>
+          <td style="color:var(--text-secondary);font-size:0.85rem">${a.tutor_name || ''}</td>
+          <td><span class="status-badge ${statusClass(a.status)}">${a.status}</span></td>
+          <td><button class="btn-icon delete-row" data-id="${a.id}" title="Delete"><i class="fas fa-trash"></i></button></td>
+        </tr>
+      `).join('');
+
+      tbody.querySelectorAll('tr').forEach(tr => {
+        tr.addEventListener('click', (e) => {
+          if (e.target.closest('.delete-row')) return;
+          openModal(parseInt(tr.dataset.id));
+        });
+      });
+    }
+
+    document.getElementById('searchInput').addEventListener('input', renderTable);
+    document.getElementById('statusFilter').addEventListener('change', renderTable);
+    document.getElementById('slotFilter').addEventListener('change', renderTable);
+    document.getElementById('tutorFilter').addEventListener('change', renderTable);
+
+    async function openModal(id) {
+      currentId = id;
+      try {
+        const res = await fetch('/api/assessments/' + id);
+        const a = await res.json();
+        document.getElementById('modalTitle').textContent = a.student_name + ' — ' + a.slot;
+        document.getElementById('statusSelect').value = a.status;
+
+        const body = document.getElementById('modalBody');
+        body.innerHTML = `
+          <div class="modal-field"><label>Tutor</label><div class="value">${a.tutor_name || '—'}</div></div>
+          <div class="modal-field"><label>Phone</label><div class="value">${a.phone || '—'}</div></div>
+          <div class="modal-field"><label>Demo Date</label><div class="value">${a.date || '—'}</div></div>
+          <div class="modal-field"><label>Demo Time</label><div class="value">${a.time || '—'}</div></div>
+          <div class="modal-field"><label>Student Age</label><div class="value">${a.student_age}</div></div>
+          <div class="modal-field"><label>Language</label><div class="value">${a.language}</div></div>
+          <div class="modal-field"><label>Level</label><div class="value"><span class="status-badge ${a.level}">${a.level}</span></div></div>
+          ${a.topics_known.length ? `<div class="modal-field"><label>Topics Known</label><div class="topic-chips">${a.topics_known.map(t => `<span class="topic-chip">${t}</span>`).join('')}</div></div>` : ''}
+          ${a.topics_covered.length ? `<div class="modal-field"><label>Topics Covered During Demo</label><div class="topic-chips">${a.topics_covered.map(t => `<span class="topic-chip">${t}</span>`).join('')}</div></div>` : ''}
+          ${a.start_topic ? `<div class="modal-field"><label>Recommended Start Topic</label><div class="value">${a.start_topic}</div></div>` : ''}
+          ${a.revision_topics.length ? `<div class="modal-field"><label>Topics Needing Revision</label><div class="topic-chips">${a.revision_topics.map(t => `<span class="topic-chip">${t}</span>`).join('')}</div></div>` : ''}
+          <div class="modal-field"><label>Feedback</label><div class="value">${a.feedback}</div></div>
+          <div class="modal-field"><label>Interest Level</label><div class="value">${'★'.repeat(a.interest_level)}${'☆'.repeat(5-a.interest_level)} (${a.interest_level}/5)</div></div>
+          ${a.additional_remarks ? `<div class="modal-field"><label>Additional Remarks</label><div class="value">${a.additional_remarks}</div></div>` : ''}
+          <div class="modal-field"><label>Submitted</label><div class="value">${new Date(a.created_at + 'Z').toLocaleString()}</div></div>
+        `;
+        document.getElementById('modal').classList.add('open');
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    document.getElementById('modalClose').addEventListener('click', () => {
+      document.getElementById('modal').classList.remove('open');
     });
 
-    // Logout
-    document.getElementById('logoutLink').addEventListener('click', async (e) => {
-      e.preventDefault();
-      await fetch('/api/logout', { method: 'POST' });
-      window.location.href = 'index.html';
+    document.getElementById('modal').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) {
+        document.getElementById('modal').classList.remove('open');
+      }
     });
+
+    document.getElementById('statusSelect').addEventListener('change', async (e) => {
+      if (!currentId) return;
+      const status = e.target.value;
+      try {
+        const res = await fetch('/api/assessments/' + currentId + '/status', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status })
+        });
+        const data = await res.json();
+        if (data.success) {
+          loadAssessments();
         }
       } catch (err) {
         console.error(err);
