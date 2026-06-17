@@ -18,6 +18,12 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
+  CREATE TABLE IF NOT EXISTS sheet_statuses (
+    row_number INTEGER PRIMARY KEY,
+    status TEXT DEFAULT 'New',
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE TABLE IF NOT EXISTS assessments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER REFERENCES users(id),
@@ -277,6 +283,7 @@ async function syncSheet() {
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       if (!r[0] || r[0].trim() === '' || r[0] === 'ETE - please don\'t delete') continue;
+      const statusRow = db.prepare('SELECT status FROM sheet_statuses WHERE row_number = ?').get(i + 1);
       entries.push({
         row: i + 1,
         demo_status: (r[0] || '').trim(),
@@ -289,6 +296,7 @@ async function syncSheet() {
         language: (r[12] || '').trim(),
         agent_name: (r[13] || '').trim(),
         phone: (r[17] || '').trim(),
+        status: statusRow ? statusRow.status : 'New',
       });
     }
     sheetDataCache = entries;
@@ -301,6 +309,16 @@ async function syncSheet() {
 
 app.get('/api/sheet-data', requireAuth, (req, res) => {
   res.json({ entries: sheetDataCache, lastSync });
+});
+
+app.patch('/api/sheet-data/:row/status', requireAuth, (req, res) => {
+  const { status } = req.body;
+  const valid = ['New', 'Contacted', 'Demo Done', 'Demo Rescheduled', 'Demo Cancelled', 'Demo Not Done', 'Converted', 'Not Interested'];
+  if (!valid.includes(status)) return res.status(400).json({ error: 'Invalid status' });
+  db.prepare('INSERT INTO sheet_statuses (row_number, status) VALUES (?, ?) ON CONFLICT(row_number) DO UPDATE SET status = ?, updated_at = CURRENT_TIMESTAMP').run(req.params.row, status, status);
+  const entry = sheetDataCache.find(e => e.row === parseInt(req.params.row));
+  if (entry) entry.status = status;
+  res.json({ success: true });
 });
 
 app.post('/api/sync-sheet', requireAuth, async (req, res) => {

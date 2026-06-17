@@ -46,6 +46,7 @@
                 <th>Language</th>
                 <th>Slot</th>
                 <th>Demo Status</th>
+                <th>Status</th>
                 <th>Date</th>
                 <th>Time</th>
                 <th>Tutor</th>
@@ -76,6 +77,21 @@
       }
     })();
 
+    document.getElementById('sheetTableBody').addEventListener('change', async (e) => {
+      if (!e.target.classList.contains('sheet-status-select')) return;
+      const row = e.target.dataset.row;
+      const status = e.target.value;
+      try {
+        await fetch('/api/sheet-data/' + row + '/status', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status })
+        });
+      } catch (err) {
+        console.error(err);
+      }
+    });
+
     // Hamburger
     document.getElementById('hamburger').addEventListener('click', () => {
       document.getElementById('sidebar').classList.toggle('open');
@@ -95,9 +111,10 @@
         document.getElementById('sheetSyncInfo').textContent = data.lastSync ? 'Last sync: ' + new Date(data.lastSync + 'Z').toLocaleTimeString() : '';
         const tbody = document.getElementById('sheetTableBody');
         if (!data.entries.length) {
-          tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--text-secondary)">No sheet data found</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:20px;color:var(--text-secondary)">No sheet data found</td></tr>';
           return;
         }
+        const statuses = ['New', 'Contacted', 'Demo Done', 'Demo Rescheduled', 'Demo Cancelled', 'Demo Not Done', 'Converted', 'Not Interested'];
         tbody.innerHTML = data.entries.map(e => `
           <tr>
             <td><strong>${e.student_name || '-'}</strong></td>
@@ -105,6 +122,7 @@
             <td>${e.language || '-'}</td>
             <td>${e.slot || '-'}</td>
             <td><span class="status-badge ${e.demo_status.toLowerCase().includes('done') ? 'Converted' : 'New'}">${e.demo_status}</span></td>
+            <td><select class="sheet-status-select" data-row="${e.row}" style="padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.8rem;background:var(--surface);color:var(--text)">${statuses.map(s => `<option value="${s}" ${s === e.status ? 'selected' : ''}>${s}</option>`).join('')}</select></td>
             <td>${e.date || '-'}</td>
             <td>${e.time || '-'}</td>
             <td>${e.tutor_name || '-'}</td>
