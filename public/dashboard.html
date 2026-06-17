@@ -184,15 +184,22 @@
 
     let cachedSheetData = { entries: [], lastSync: null };
 
+    function normalizeDate(val) {
+      if (!val) return '';
+      const m = val.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+      if (!m) return val;
+      let dd = m[1].padStart(2, '0');
+      let mm = m[2].padStart(2, '0');
+      let yy = m[3];
+      if (yy.length === 2) yy = '20' + yy;
+      return yy + '-' + mm + '-' + dd;
+    }
+
     function renderFilteredSheet() {
       const dateVal = document.getElementById('dateFilter').value;
       const slotVal = document.getElementById('slotFilter').value.toLowerCase().trim();
       const entries = cachedSheetData.entries.filter(e => {
-        if (dateVal) {
-          const parts = dateVal.split('-');
-          const ddmm = parts[2] + '/' + parts[1] + '/' + parts[0];
-          if (e.date !== ddmm && e.date !== dateVal) return false;
-        }
+        if (dateVal && normalizeDate(e.date) !== dateVal) return false;
         if (slotVal && !(e.slot || '').toLowerCase().includes(slotVal)) return false;
         return true;
       });
