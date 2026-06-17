@@ -314,7 +314,6 @@ let lastSync = null;
 async function syncSheet() {
   try {
     const sheets = getSheetsClient();
-    const sheets = google.sheets({ version: 'v4', auth });
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
       range: "'Trial 2.0'!A:R",
