@@ -109,10 +109,6 @@
             <input type="text" id="form_tutor_name" required readonly>
           </div>
           <div>
-            <label>Parent Phone</label>
-            <input type="text" id="form_phone">
-          </div>
-          <div>
             <label>Student Age *</label>
             <input type="text" id="form_student_age" required>
           </div>
@@ -296,7 +292,7 @@
           const row = e.row;
           const btn = a
             ? `<button class="btn btn-secondary" style="padding:4px 10px;font-size:0.8rem" data-row="${row}" onclick="viewAssessmentByRow(${row})">View</button>`
-            : `<button class="btn btn-primary" style="padding:4px 10px;font-size:0.8rem" data-row="${row}" onclick="openForm(${row},'${esc(e.tutor_name)}','${esc(e.student_name)}','${esc(e.slot)}','${esc(e.date)}','${esc(e.time)}','${esc(e.phone)}','${esc(e.age)}','${esc(e.language)}')">Assess</button>`;
+            : `<button class="btn btn-primary" style="padding:4px 10px;font-size:0.8rem" data-row="${row}" onclick="openForm(${row},'${esc(e.tutor_name)}','${esc(e.student_name)}','${esc(e.slot)}','${esc(e.date)}','${esc(e.time)}','${esc(e.age)}','${esc(e.language)}')">Assess</button>`;
           const sheetStatus = e.status && e.status !== 'New' ? e.status : (e.demo_status && e.demo_status !== 'New' ? e.demo_status : '');
           const statusColors = {
             Converted: 'background:#cce5ff;color:#004085',
@@ -349,7 +345,6 @@
         document.getElementById('viewModalTitle').textContent = a.student_name + ' — ' + a.slot;
         document.getElementById('viewModalBody').innerHTML = `
           <div class="modal-field"><label>Tutor</label><div class="value">${a.tutor_name || '—'}</div></div>
-          <div class="modal-field"><label>Phone</label><div class="value">${a.phone || '—'}</div></div>
           <div class="modal-field"><label>Demo Date</label><div class="value">${a.date || '—'}</div></div>
           <div class="modal-field"><label>Demo Time</label><div class="value">${a.time || '—'}</div></div>
           <div class="modal-field"><label>Student Age</label><div class="value">${a.student_age}</div></div>
@@ -397,7 +392,7 @@
         ${groupTpl(`revision-${level}`, `${level} — Topics Needing Revision`)}`;
     }
 
-    function openForm(row, tutorNameParam, studentName, slot, date, time, phone, age, language) {
+    function openForm(row, tutorNameParam, studentName, slot, date, time, age, language) {
       currentSheetRow = row;
       document.getElementById('formModalTitle').textContent = 'Assess: ' + studentName;
       document.getElementById('form_sheet_row').value = row;
@@ -406,7 +401,6 @@
       document.getElementById('form_date_display').textContent = date;
       document.getElementById('form_time_display').textContent = time;
       document.getElementById('form_tutor_name').value = tutorNameParam || tutorName;
-      document.getElementById('form_phone').value = phone || '';
       document.getElementById('form_student_age').value = age || '';
       document.getElementById('form_language').value = language || '';
       document.getElementById('form_level').value = '';
@@ -450,15 +444,14 @@
         return Array.from(container.querySelectorAll('input:checked')).map(cb => cb.value);
       };
 
-      const payload = {
-        sheet_row: parseInt(document.getElementById('form_sheet_row').value),
-        tutor_name: document.getElementById('form_tutor_name').value,
-        phone: document.getElementById('form_phone').value,
-        student_name: document.getElementById('form_student_name_display').textContent,
-        slot: document.getElementById('form_slot_display').textContent,
-        date: document.getElementById('form_date_display').textContent,
-        time: document.getElementById('form_time_display').textContent,
-        student_age: document.getElementById('form_student_age').value,
+        const payload = {
+          sheet_row: parseInt(document.getElementById('form_sheet_row').value),
+          tutor_name: document.getElementById('form_tutor_name').value,
+          student_name: document.getElementById('form_student_name_display').textContent,
+          slot: document.getElementById('form_slot_display').textContent,
+          date: document.getElementById('form_date_display').textContent,
+          time: document.getElementById('form_time_display').textContent,
+          student_age: document.getElementById('form_student_age').value,
         language: document.getElementById('form_language').value,
         level: level,
         topics_known: getChecked('known-' + level),
