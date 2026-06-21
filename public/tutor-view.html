@@ -291,12 +291,17 @@
 
         tbody.innerHTML = entries.map((e, i) => {
           const a = assessments[i];
-          return `<tr style="cursor:pointer" data-row="${e.row}">
+          const esc = s => (s || '').replace(/'/g, "\\'");
+          const row = e.row;
+          const btn = a
+            ? `<button class="btn btn-secondary" style="padding:4px 10px;font-size:0.8rem" data-row="${row}" onclick="viewAssessmentByRow(${row})">View</button>`
+            : `<button class="btn btn-primary" style="padding:4px 10px;font-size:0.8rem" data-row="${row}" onclick="openForm(${row},'${esc(e.tutor_name)}','${esc(e.student_name)}','${esc(e.slot)}','${esc(e.date)}','${esc(e.time)}','${esc(e.phone)}','${esc(e.age)}','${esc(e.language)}')">Assess</button>`;
+          return `<tr style="cursor:pointer" data-row="${row}">
             <td>${e.time || '-'}</td>
             <td>${e.date || '-'}</td>
             <td>${e.slot || '-'}</td>
             <td><strong>${e.student_name || '-'}</strong></td>
-            <td><button class="btn ${a ? 'btn-secondary' : 'btn-primary'}" style="padding:4px 10px;font-size:0.8rem" data-row="${e.row}" onclick="event.stopPropagation();${a ? 'viewAssessmentByRow('+e.row+')' : 'openForm('+e.row+',''+e.tutor_name.replace(/'/g,"\'")+'',''+e.student_name.replace(/'/g,"\'")+'',''+e.slot.replace(/'/g,"\'")+'',''+e.date.replace(/'/g,"\'")+'',''+e.time.replace(/'/g,"\'")+'',''+(e.phone||'').replace(/'/g,"\'")+'',''+(e.age||'').replace(/'/g,"\'")+'',''+(e.language||'').replace(/'/g,"\'")+'')'}">${a ? 'View' : 'Assess'}</button></td>
+            <td>${btn}</td>
           </tr>`;
         }).join('');
       } catch (err) {
