@@ -302,7 +302,7 @@
             <td>${e.date || '-'}</td>
             <td>${e.slot || '-'}</td>
             <td><strong>${e.student_name || '-'}</strong></td>
-            <td>${a ? '<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:0.75rem;font-weight:600;background:#d4edda;color:#155724">Demo Done</span>' : '<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:0.75rem;font-weight:600;background:#fff3cd;color:#856404">Pending</span>'}</td>
+            <td>${a ? (a.status === 'Converted' ? '<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:0.75rem;font-weight:600;background:#cce5ff;color:#004085">Converted</span>' : '<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:0.75rem;font-weight:600;background:#d4edda;color:#155724">Demo Done</span>') : '<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:0.75rem;font-weight:600;background:#fff3cd;color:#856404">Pending</span>'}</td>
             <td>${btn}</td>
           </tr>`;
         }).join('');
