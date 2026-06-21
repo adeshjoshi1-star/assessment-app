@@ -66,18 +66,15 @@
           <table>
             <thead>
               <tr>
-                <th>Student Name</th>
-                <th>Slot</th>
-                <th>Date</th>
                 <th>Time</th>
-                <th>Age</th>
-                <th>Language</th>
-                <th>Demo Status</th>
+                <th>Date</th>
+                <th>Slot</th>
+                <th>Student Name</th>
                 <th style="width:90px">Action</th>
               </tr>
             </thead>
             <tbody id="tableBody">
-              <tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-secondary)">Enter your 4-digit code above to see your assigned demos.</td></tr>
+              <tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-secondary)">Enter your 4-digit code above to see your assigned demos.</td></tr>
             </tbody>
           </table>
         </div>
@@ -209,9 +206,9 @@
       document.getElementById('loginSection').style.display = 'flex';
       document.getElementById('tutorHeader').style.display = 'none';
       document.getElementById('codeInput').value = '';
-      document.getElementById('tableBody').innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-secondary)">Enter your 4-digit code above to see your assigned demos.</td></tr>';
+      document.getElementById('tableBody').innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-secondary)">Enter your 4-digit code above to see your assigned demos.</td></tr>';
       document.getElementById('countBadge').textContent = '';
-    }
+    };
 
     document.getElementById('loginBtn').addEventListener('click', doLogin);
     document.getElementById('codeInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
@@ -222,7 +219,7 @@
       const tbody = document.getElementById('tableBody');
       const badge = document.getElementById('countBadge');
       if (!name) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-secondary)">Enter your code above to see your assigned demos.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-secondary)">Enter your code above to see your assigned demos.</td></tr>';
         badge.textContent = '';
         return;
       }
@@ -231,7 +228,7 @@
         const entries = await res.json();
         badge.textContent = entries.length + ' demo' + (entries.length === 1 ? '' : 's');
         if (!entries.length) {
-          tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-secondary)">No demos assigned to you yet.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-secondary)">No demos assigned to you yet.</td></tr>';
           return;
         }
         const assessmentPromises = entries.map(e =>
@@ -242,19 +239,16 @@
         tbody.innerHTML = entries.map((e, i) => {
           const a = assessments[i];
           return `<tr style="cursor:pointer" data-row="${e.row}">
-            <td><strong>${e.student_name || '-'}</strong></td>
-            <td>${e.slot || '-'}</td>
-            <td>${e.date || '-'}</td>
             <td>${e.time || '-'}</td>
-            <td>${e.age || '-'}</td>
-            <td>${e.language || '-'}</td>
-            <td><span class="status-badge ${(() => { if (a) return 'DemoDone'; const s = e.demo_status.toLowerCase(); if (s.includes('not done')) return 'DemoNotDone'; if (s.includes('done')) return 'DemoDone'; if (s === 'converted') return 'Converted'; return 'New'; })()}">${a ? 'Demo Done' : (e.demo_status || 'Pending')}</span></td>
+            <td>${e.date || '-'}</td>
+            <td>${e.slot || '-'}</td>
+            <td><strong>${e.student_name || '-'}</strong></td>
             <td><button class="btn ${a ? 'btn-secondary' : 'btn-primary'}" style="padding:4px 10px;font-size:0.8rem" data-row="${e.row}" onclick="event.stopPropagation();${a ? 'viewAssessmentByRow('+e.row+')' : 'openForm('+e.row+',''+e.tutor_name.replace(/'/g,"\'")+'',''+e.student_name.replace(/'/g,"\'")+'',''+e.slot.replace(/'/g,"\'")+'',''+e.date.replace(/'/g,"\'")+'',''+e.time.replace(/'/g,"\'")+'',''+(e.phone||'').replace(/'/g,"\'")+'',''+(e.age||'').replace(/'/g,"\'")+'',''+(e.language||'').replace(/'/g,"\'")+'')'}">${a ? 'View' : 'Assess'}</button></td>
           </tr>`;
         }).join('');
       } catch (err) {
         console.error('Failed to load demos', err);
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-secondary)">Error loading demos.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-secondary)">Error loading demos.</td></tr>';
       }
     }
 
