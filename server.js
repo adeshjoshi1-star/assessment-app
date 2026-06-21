@@ -63,7 +63,7 @@ if (!existingAdmin) {
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(session({
-  secret: 'asmnt-secret-k3y-2026',
+  secret: process.env.SESSION_SECRET || 'asmnt-secret-k3y-2026',
   resave: false,
   saveUninitialized: false,
   cookie: { maxAge: 24 * 60 * 60 * 1000 }
