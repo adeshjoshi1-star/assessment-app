@@ -64,19 +64,15 @@ function nameHash(name) {
 }
 
 function generateTutorCode(name, existingCodes = new Set()) {
-  const cleaned = name.replace(/[^a-zA-Z]/g, '');
-  const prefix = cleaned.substring(0, Math.min(3, cleaned.length)).toUpperCase() || 'TUT';
-  const base = nameHash(name) % 100;
   let code;
-  for (let offset = 0; offset < 100; offset++) {
-    const digits = String((base + offset) % 100).padStart(2, '0');
-    code = prefix + digits;
+  for (let i = 1; i <= 9999; i++) {
+    code = String(i).padStart(4, '0');
     if (!existingCodes.has(code)) {
       existingCodes.add(code);
       return code;
     }
   }
-  return prefix + String(Math.floor(Math.random() * 100)).padStart(2, '0');
+  return '0001';
 }
 
 function syncTutorsFromSheet() {

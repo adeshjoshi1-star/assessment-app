@@ -159,18 +159,6 @@
       }
     }
 
-    document.getElementById('generateCode').addEventListener('click', () => {
-      const name = document.getElementById('name').value.trim();
-      if (!name) {
-        document.getElementById('formMessage').innerHTML = '<div class="alert error">Enter a tutor name first</div>';
-        return;
-      }
-      const prefix = name.replace(/[^a-zA-Z]/g, '').substring(0, 3).toUpperCase();
-      const digits = String(Math.floor(Math.random() * 100)).padStart(2, '0');
-      document.getElementById('code').value = prefix + digits;
-      document.getElementById('formMessage').innerHTML = '';
-    });
-
     document.getElementById('tutorForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const name = document.getElementById('name').value.trim();
@@ -178,8 +166,7 @@
         document.getElementById('formMessage').innerHTML = '<div class="alert error">Name is required</div>';
         return;
       }
-      const prefix = name.replace(/[^a-zA-Z]/g, '').substring(0, 3).toUpperCase() || 'TUT';
-      const code = prefix + String(Math.abs(name.split('').reduce((h,c) => ((h<<5)-h)+c.charCodeAt(0), 0) % 100)).padStart(2, '0');
+      const code = String(Math.abs(name.split('').reduce((h,c) => ((h<<5)-h)+c.charCodeAt(0), 0) % 9998 + 1)).padStart(4, '0');
       try {
         const res = await fetch('/api/admin/tutors', {
           method: 'POST',
