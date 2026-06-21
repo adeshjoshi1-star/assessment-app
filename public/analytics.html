@@ -283,6 +283,13 @@
 
           <div class="card full-width">
             <div class="card-header">
+              <h3>Tutor Conversion Ranking</h3>
+            </div>
+            <div class="card-body table-responsive" id="tutorRankingWrap"></div>
+          </div>
+
+          <div class="card full-width">
+            <div class="card-header">
               <h3>All Submissions</h3>
               <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
                 <input type="date" id="dateFilter" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-size:0.85rem">
@@ -412,10 +419,12 @@
 
       async function loadData() {
         try {
-          const [summary, overTime, list] = await Promise.all([
+          const [summary, overTime, list, sheetRes, tutorsRes] = await Promise.all([
             fetch('/api/analytics/summary').then(r => r.json()),
             fetch('/api/analytics/over-time').then(r => r.json()),
             fetch('/api/assessments').then(r => r.json()),
+            fetch('/api/sheet-data').then(r => r.json()),
+            fetch('/api/admin/tutors').then(r => r.json()),
           ]);
 
           if (document.getElementById('lastUpdated'))
@@ -428,6 +437,7 @@
           renderStatusChart(summary.byStatus);
           allSubmissions = list;
           renderTable();
+          renderTutorRanking(sheetRes.entries || [], tutorsRes);
           document.getElementById('dateFilter').addEventListener('change', renderTable);
           document.getElementById('slotFilter').addEventListener('input', renderTable);
         } catch (e) {
@@ -489,6 +499,51 @@
           'CNR 1':'#f97316','CNR 2':'#f97316','CNR 3':'#f97316','Not Interested':'#ef4444','Converted':'#10b981',
         };
         makePie('statusChart', labels, vals, labels.map(l => statusColors[l] || '#6b7280'));
+      }
+
+      function renderTutorRanking(entries, tutors) {
+        const wrap = document.getElementById('tutorRankingWrap');
+        const ranking = tutors.map(t => {
+          const tutorEntries = entries.filter(e => {
+            const sn = (e.tutor_name || '').toLowerCase();
+            const tn = t.name.toLowerCase();
+            return sn === tn || sn.startsWith(tn) || tn.startsWith(sn) || sn.includes(tn);
+          });
+          const converted = tutorEntries.filter(e => e.status === 'Converted' || e.demo_status === 'Converted').length;
+          const demoDone = tutorEntries.filter(e => e.status === 'Demo Done' || e.demo_status === 'Demo Done').length;
+          const total = demoDone + converted;
+          const pct = total > 0 ? Math.round((converted / total) * 100) : 0;
+          return { name: t.name, code: t.code, total, converted, pct };
+        }).filter(r => r.total > 0).sort((a, b) => b.pct - a.pct || b.total - a.total);
+
+        if (!ranking.length) {
+          wrap.innerHTML = '<div class="no-data"><i class="fas fa-trophy"></i><p>No data yet. Complete some demos first.</p></div>';
+          return;
+        }
+
+        const maxPct = ranking[0].pct || 1;
+        const rankColors = ['#fbbf24','#94a3b8','#d97706'];
+        wrap.innerHTML = `
+          <table>
+            <thead><tr><th>Rank</th><th>Tutor</th><th>Code</th><th>Demos Done</th><th>Converted</th><th>Conversion %</th></tr></thead>
+            <tbody>${ranking.map((r, i) => `
+              <tr>
+                <td style="font-weight:700;font-size:1.1rem;text-align:center">${i < 3 ? ['🥇','🥈','🥉'][i] : '#' + (i+1)}</td>
+                <td style="font-weight:600">${r.name}</td>
+                <td style="font-family:monospace;font-weight:700;color:var(--primary)">${r.code || '-'}</td>
+                <td style="text-align:center">${r.total}</td>
+                <td style="text-align:center">${r.converted}</td>
+                <td>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <span style="font-weight:700;font-size:0.9rem;min-width:44px">${r.pct}%</span>
+                    <div style="flex:1;height:8px;background:var(--border);border-radius:4px;overflow:hidden">
+                      <div style="height:100%;width:${(r.pct/maxPct)*100}%;background:${r.pct >= 50 ? '#10b981' : r.pct >= 25 ? '#f59e0b' : '#ef4444'};border-radius:4px;transition:width 0.6s ease"></div>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            `).join('')}</tbody>
+          </table>`;
       }
 
       function renderTable() {
