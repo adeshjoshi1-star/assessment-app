@@ -73,6 +73,18 @@
             </select>
             <div id="demosInline"></div>
           </div>
+
+          <div class="tutor-list-card">
+            <h2>All Tutors & Codes</h2>
+            <div style="overflow-x:auto;max-height:400px;overflow-y:auto">
+              <table class="tutor-table" style="min-width:300px">
+                <thead>
+                  <tr><th>#</th><th>Name</th><th>Code</th></tr>
+                </thead>
+                <tbody id="tutorCodeTableBody"></tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -107,11 +119,17 @@
       try {
         const res = await fetch('/api/admin/tutors');
         const tutors = await res.json();
+        const sorted = tutors.sort((a, b) => a.name.localeCompare(b.name));
         const select = document.getElementById('tutorDropdown');
         select.innerHTML = '<option value="">— Choose a tutor —</option>' +
-          tutors.sort((a, b) => a.name.localeCompare(b.name)).map(t =>
+          sorted.map(t =>
             `<option value="${t.name.replace(/"/g, '&quot;')}">${t.name}</option>`
           ).join('');
+
+        const tbody = document.getElementById('tutorCodeTableBody');
+        tbody.innerHTML = sorted.map((t, i) =>
+          `<tr><td>${i + 1}</td><td>${t.name}</td><td style="font-family:monospace;font-weight:700;letter-spacing:1px;color:var(--primary)">${t.code || '-'}</td></tr>`
+        ).join('');
       } catch (err) {
         console.error(err);
       }
