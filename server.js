@@ -507,7 +507,21 @@ app.get('/api/sheet-tutors', (req, res) => {
 
 app.get('/api/sheet-tutor/:name', (req, res) => {
   const tutorName = decodeURIComponent(req.params.name).trim().toLowerCase();
-  const entries = sheetDataCache.filter(e => e.tutor_name.toLowerCase() === tutorName);
+  let entries = sheetDataCache.filter(e => e.tutor_name.toLowerCase() === tutorName);
+  if (!entries.length) {
+    const firstWord = tutorName.split(/\s+/)[0];
+    entries = sheetDataCache.filter(e => {
+      const sn = e.tutor_name.toLowerCase();
+      return sn === firstWord || sn.startsWith(firstWord) || firstWord.startsWith(sn) || sn.includes(firstWord) || firstWord.includes(sn);
+    });
+  }
+  if (!entries.length) {
+    const words = tutorName.split(/\s+/);
+    entries = sheetDataCache.filter(e => {
+      const sn = e.tutor_name.toLowerCase();
+      return words.some(w => w.length > 1 && sn.includes(w));
+    });
+  }
   res.json(entries);
 });
 
