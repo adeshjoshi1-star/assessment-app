@@ -263,6 +263,11 @@ app.get('/api/tutor/assessments', requireTutor, (req, res) => {
   res.json(list);
 });
 
+app.get('/api/tutor-names', (req, res) => {
+  const tutors = db.prepare("SELECT name FROM users WHERE role = 'teacher' ORDER BY name ASC").all();
+  res.json(tutors.map(t => t.name));
+});
+
 app.get('/api/slots', (req, res) => {
   const slots = [];
   for (let i = 1; i <= 26; i++) {
