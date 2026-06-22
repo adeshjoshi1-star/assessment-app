@@ -86,6 +86,8 @@ const TUTOR_NAME_ALIASES = {
   'yathin': 'Yatin',
   'yathin pradeep': 'Yatin',
   'yatin pradeep': 'Yatin',
+  'abhishek': 'Abhishek',
+  'abhishek tm': 'Abhishek',
 };
 
 function normalizeTutorName(raw) {
