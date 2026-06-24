@@ -300,8 +300,9 @@
                 <button class="btn btn-danger" style="padding:4px 10px;font-size:0.8rem" onclick="event.stopPropagation();clearAssessment(${row})">Clear</button>
                </div>`
             : `<button class="btn btn-primary" style="padding:4px 10px;font-size:0.8rem" data-row="${row}" onclick="openForm(${row},'${esc(e.tutor_name)}','${esc(e.student_name)}','${esc(e.slot)}','${esc(e.date)}','${esc(e.time)}','${esc(e.age)}','${esc(e.language)}')">Assess</button>`;
-          const st = e.demo_status || 'New';
-          return `<tr style="cursor:pointer" data-row="${row}" class="row-${rowClass(e.demo_status)}">
+          const mismatch = a && !tutorMatches;
+          const st = mismatch ? 'Demo Not Done' : (e.demo_status || 'New');
+          return `<tr style="cursor:pointer" data-row="${row}" class="row-${rowClass(st)}">
             <td>${e.time || '-'}</td>
             <td>${e.date || '-'}</td>
             <td>${e.slot || '-'}</td>
