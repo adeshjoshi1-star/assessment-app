@@ -755,9 +755,17 @@ app.get('/api/sheet-tutor/:name', (req, res) => {
       entries = sheetDataCache.filter(e => {
         const sn = e.tutor_name.toLowerCase();
         if (!sn) return false;
-        return sn === firstWord || sn.startsWith(firstWord) || firstWord.startsWith(sn);
+        return sn === firstWord || sn.startsWith(firstWord) || firstWord.startsWith(sn) || sn.includes(firstWord) || firstWord.includes(sn);
       });
     }
+  }
+  if (!entries.length) {
+    const words = tutorName.split(/\s+/);
+    entries = sheetDataCache.filter(e => {
+      const sn = e.tutor_name.toLowerCase();
+      if (!sn) return false;
+      return words.some(w => w.length > 1 && sn.includes(w));
+    });
   }
   res.json(entries.sort((a, b) => b.row - a.row));
 });
