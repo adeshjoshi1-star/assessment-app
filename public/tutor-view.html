@@ -291,9 +291,10 @@
         const rowClass = s => { const s2 = s.toLowerCase(); if (s2.includes('not done')) return 'DemoNotDone'; if (s2.includes('done')) return 'DemoDone'; if (s2 === 'converted') return 'Converted'; if (s2 === 'hot') return 'Hot'; return 'New'; };
         tbody.innerHTML = entries.map((e, i) => {
           const a = assessments[i];
+          const tutorMatches = a && a.tutor_name && name && a.tutor_name.toLowerCase() === name.toLowerCase();
           const esc = s => (s || '').replace(/'/g, "\\'");
           const row = e.row;
-          const btn = a
+          const btn = a && tutorMatches
             ? `<div style="display:flex;gap:4px">
                 <button class="btn btn-secondary" style="padding:4px 10px;font-size:0.8rem" data-row="${row}" onclick="viewAssessmentByRow(${row})">View</button>
                 <button class="btn btn-danger" style="padding:4px 10px;font-size:0.8rem" onclick="event.stopPropagation();clearAssessment(${row})">Clear</button>
@@ -324,7 +325,7 @@
       const row = tr.dataset.row;
       const res = await fetch('/api/assessments/by-row/' + row);
       const a = await res.json();
-      if (a) {
+      if (a && a.tutor_name && tutorName && a.tutor_name.toLowerCase() === tutorName.toLowerCase()) {
         viewAssessmentByRow(row);
       } else {
         const btn = tr.querySelector('button');
@@ -337,6 +338,9 @@
         const res = await fetch('/api/assessments/by-row/' + row);
         const a = await res.json();
         if (!a) return alert('Assessment not found.');
+        if (a.tutor_name && tutorName && a.tutor_name.toLowerCase() !== tutorName.toLowerCase()) {
+          return alert('This assessment belongs to another tutor.');
+        }
         document.getElementById('viewModalTitle').textContent = a.student_name + ' — ' + a.slot;
         document.getElementById('viewModalBody').innerHTML = `
           <div class="modal-field"><label>Tutor</label><div class="value">${a.tutor_name || '—'}</div></div>
