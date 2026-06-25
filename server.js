@@ -771,25 +771,51 @@ async function syncSheet() {
 }
 
 function backfillAssessments() {
-  const assessments = db.prepare('SELECT * FROM assessments WHERE sheet_row IS NULL').all();
-  let updated = 0;
+  const assessments = db.prepare('SELECT * FROM assessments WHERE sheet_row IS NOT NULL').all();
+  let cleared = 0;
   for (const a of assessments) {
+    const entry = sheetDataCache.find(e => e.row === a.sheet_row);
+    if (!entry) {
+      db.prepare('UPDATE assessments SET sheet_row = NULL WHERE id = ?').run(a.id);
+      cleared++;
+    } else if (
+      entry.tutor_name && a.tutor_name &&
+      entry.tutor_name.toLowerCase() === a.tutor_name.toLowerCase() &&
+      entry.student_name && a.student_name &&
+      entry.student_name.toLowerCase() === a.student_name.toLowerCase() &&
+      entry.slot && a.slot && entry.slot === a.slot &&
+      entry.date && a.date && entry.date === a.date &&
+      entry.time && a.time && entry.time === a.time
+    ) {
+      // valid match, keep it
+    } else {
+      db.prepare('UPDATE assessments SET sheet_row = NULL WHERE id = ?').run(a.id);
+      cleared++;
+    }
+  }
+  if (cleared > 0) console.log(`Cleared ${cleared} incorrect sheet_row values`);
+  const unlinked = db.prepare('SELECT * FROM assessments WHERE sheet_row IS NULL').all();
+  let linked = 0;
+  for (const a of unlinked) {
     const entry = sheetDataCache.find(e => {
       if (!e.tutor_name || !a.tutor_name) return false;
       if (e.tutor_name.toLowerCase() !== a.tutor_name.toLowerCase()) return false;
-      if (e.student_name && a.student_name && e.student_name.toLowerCase() !== a.student_name.toLowerCase()) return false;
-      if (e.slot && a.slot && e.slot !== a.slot) return false;
-      if (e.date && a.date && e.date !== a.date) return false;
-      if (e.time && a.time && e.time !== a.time) return false;
-      if (e.age && a.student_age && e.age !== a.student_age) return false;
+      if (!e.student_name || !a.student_name) return false;
+      if (e.student_name.toLowerCase() !== a.student_name.toLowerCase()) return false;
+      if (!e.slot || !a.slot) return false;
+      if (e.slot !== a.slot) return false;
+      if (!e.date || !a.date) return false;
+      if (e.date !== a.date) return false;
+      if (!e.time || !a.time) return false;
+      if (e.time !== a.time) return false;
       return true;
     });
-    if (entry) {
+    if (entry && !db.prepare('SELECT id FROM assessments WHERE sheet_row = ? AND id != ?').get(entry.row, a.id)) {
       db.prepare('UPDATE assessments SET sheet_row = ? WHERE id = ?').run(entry.row, a.id);
-      updated++;
+      linked++;
     }
   }
-  if (updated > 0) console.log(`Backfilled ${updated} assessments with sheet_row`);
+  if (linked > 0) console.log(`Linked ${linked} assessments by all-field match`);
 }
 
 app.get('/api/sheet-tutors', (req, res) => {
