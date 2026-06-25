@@ -476,7 +476,11 @@ app.get('/api/assessments/by-row/:row', (req, res) => {
   if (!a) {
     const entry = sheetDataCache.find(e => e.row === row);
     if (entry) {
-      a = db.prepare("SELECT * FROM assessments WHERE tutor_name = ? AND student_name = ? AND slot = ? AND date = ? AND time = ? ORDER BY created_at DESC LIMIT 1").get(entry.tutor_name, entry.student_name, entry.slot, (entry.date || '').trim(), (entry.time || '').trim());
+      if (req.query.tutor) {
+        a = db.prepare("SELECT * FROM assessments WHERE tutor_name = ? AND student_name = ? AND slot = ? AND date = ? AND time = ? ORDER BY created_at DESC LIMIT 1").get(entry.tutor_name, entry.student_name, entry.slot, (entry.date || '').trim(), (entry.time || '').trim());
+      } else {
+        a = db.prepare("SELECT * FROM assessments WHERE tutor_name = ? AND student_name = ? AND student_age = ? AND slot = ? ORDER BY created_at DESC LIMIT 1").get(entry.tutor_name, entry.student_name, (entry.age || '').trim(), entry.slot);
+      }
     }
   }
   if (!a) return res.json(null);
