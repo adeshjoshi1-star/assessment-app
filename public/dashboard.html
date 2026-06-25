@@ -150,7 +150,7 @@
       try {
         const res = await fetch('/api/assessments/by-row/' + row);
         const a = await res.json();
-        if (!a || (a.tutor_name && rowTutor && a.tutor_name.toLowerCase() !== rowTutor.toLowerCase())) {
+        if (!a) {
           const cells = tr.cells;
           document.getElementById('modalTitle').textContent = (cells[3]?.textContent || 'Demo') + ' — ' + (cells[2]?.textContent || '');
           document.getElementById('modalBody').innerHTML = `
