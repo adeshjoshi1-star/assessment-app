@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -107,6 +107,21 @@
 
     .analytics-page .full-width { grid-column: 1 / -1; }
 
+    .analytics-page .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 28px;
+    }
+    .analytics-page .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .analytics-page .card-header h3 { font-size: 1.05rem; font-weight: 700; }
+
     .analytics-page .table-responsive { overflow-x: auto; }
 
     .analytics-page table {
@@ -152,6 +167,8 @@
         <a href="dashboard.html" class="nav-item"><i class="fas fa-list"></i> Submissions</a>
         <a href="tutor-view.html" class="nav-item"><i class="fas fa-user-graduate"></i> Tutor Demo Assessment</a>
         <a href="admin-tutors.html" class="nav-item"><i class="fas fa-users-cog"></i> Manage Tutors</a>
+        <a href="completed.html" class="nav-item"><i class="fas fa-check-circle"></i> Demo Completed</a>
+        <a href="conversion.html" class="nav-item"><i class="fas fa-percent"></i> Conversion Rate</a>
       </nav>
       <div class="sidebar-footer">
         <a href="#" id="analyticsLogout"><i class="fas fa-sign-out-alt"></i> Logout</a>
@@ -263,7 +280,7 @@
               return sn === tn || sn.startsWith(tn) || tn.startsWith(sn) || sn.includes(tn);
             });
             const converted = tutorEntries.filter(e => e.status === 'Converted' || e.demo_status === 'Converted').length;
-            const demoDone = tutorEntries.filter(e => e.status === 'Demo Done' || e.demo_status === 'Demo Done').length;
+            const demoDone = tutorEntries.filter(e => e.demo_status === 'Demo Done' || e.demo_status === 'Assessment Pending').length;
             const total = demoDone + converted;
             const pct = total > 0 ? Math.round((converted / total) * 100) : 0;
             const incentive = calcIncentive(total, pct, converted);
