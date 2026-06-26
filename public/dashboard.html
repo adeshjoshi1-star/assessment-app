@@ -270,7 +270,7 @@
         return;
       }
       const followUpOptions = ['New', 'In Conversation', 'CNR', 'Hot', 'Converted'];
-      const rowClass = s => { const s2 = s.toLowerCase(); if (s2.includes('assessment pending')) return 'AssessmentPending'; if (s2.includes('not done')) return 'DemoNotDone'; if (s2.includes('done')) return 'DemoDone'; if (s2 === 'converted') return 'Converted'; if (s2 === 'hot') return 'Hot'; return 'New'; };
+      const rowClass = s => { const s2 = s.toLowerCase(); if (s2.includes('assessment pending')) return 'AssessmentPending'; if (s2.includes('cancelled')) return 'DemoCancelled'; if (s2.includes('not done')) return 'DemoNotDone'; if (s2.includes('done')) return 'DemoDone'; if (s2 === 'converted') return 'Converted'; if (s2 === 'hot') return 'Hot'; return 'New'; };
       tbody.innerHTML = entries.map(e => `<tr data-row="${e.row}" data-tutor="${(e.tutor_name || '').replace(/"/g, '&quot;')}" class="row-${rowClass(e.demo_status)}" style="cursor:pointer">
           <td>${e.date || '-'}</td>
           <td>${e.time || '-'}</td>
