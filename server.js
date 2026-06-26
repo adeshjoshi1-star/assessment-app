@@ -770,6 +770,17 @@ async function syncSheet() {
   }
 }
 
+function normalizeDate(d) {
+  if (!d) return '';
+  const m = d.match(/^(\d{1,2})[\/.](\d{1,2})[\/.](\d{2,4})$/);
+  if (m) {
+    let dd = m[1].padStart(2, '0'), mm = m[2].padStart(2, '0'), yy = m[3];
+    if (yy.length === 2) yy = '20' + yy;
+    return `${yy}-${mm}-${dd}`;
+  }
+  return d.trim();
+}
+
 function backfillAssessments() {
   const assessments = db.prepare('SELECT * FROM assessments WHERE sheet_row IS NOT NULL').all();
   let cleared = 0;
@@ -784,8 +795,8 @@ function backfillAssessments() {
       entry.student_name && a.student_name &&
       entry.student_name.toLowerCase() === a.student_name.toLowerCase() &&
       entry.slot && a.slot && entry.slot === a.slot &&
-      entry.date && a.date && entry.date === a.date &&
-      entry.time && a.time && entry.time === a.time
+      entry.date && a.date && normalizeDate(entry.date) === normalizeDate(a.date) &&
+      entry.time && a.time && entry.time.toLowerCase().replace(/\s+/g, '') === a.time.toLowerCase().replace(/\s+/g, '')
     ) {
       // valid match, keep it
     } else {
@@ -805,9 +816,9 @@ function backfillAssessments() {
       if (!e.slot || !a.slot) return false;
       if (e.slot !== a.slot) return false;
       if (!e.date || !a.date) return false;
-      if (e.date !== a.date) return false;
+      if (normalizeDate(e.date) !== normalizeDate(a.date)) return false;
       if (!e.time || !a.time) return false;
-      if (e.time !== a.time) return false;
+      if (e.time.toLowerCase().replace(/\s+/g, '') !== a.time.toLowerCase().replace(/\s+/g, '')) return false;
       return true;
     });
     if (entry && !db.prepare('SELECT id FROM assessments WHERE sheet_row = ? AND id != ?').get(entry.row, a.id)) {
@@ -816,6 +827,10 @@ function backfillAssessments() {
     }
   }
   if (linked > 0) console.log(`Linked ${linked} assessments by all-field match`);
+  const stillMissing = db.prepare("SELECT id, tutor_name, student_name, slot, date, time FROM assessments WHERE sheet_row IS NULL").all();
+  if (stillMissing.length > 0) {
+    console.log(`Still ${stillMissing.length} assessments without sheet_row:`, stillMissing.map(a => `${a.tutor_name}/${a.student_name}`).join(', '));
+  }
 }
 
 app.get('/api/sheet-tutors', (req, res) => {
