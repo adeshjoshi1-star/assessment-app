@@ -147,11 +147,11 @@
       if (!tr || e.target.tagName === 'SELECT') return;
       const row = tr.dataset.row;
       const rowTutor = tr.dataset.tutor || '';
+      const cells = tr.cells;
       try {
         const res = await fetch('/api/assessments/by-row/' + row);
         const a = await res.json();
         if (!a) {
-          const cells = tr.cells;
           document.getElementById('modalTitle').textContent = (cells[3]?.textContent || 'Demo') + ' — ' + (cells[2]?.textContent || '');
           document.getElementById('modalBody').innerHTML = `
             <div class="modal-field"><label>Date</label><div class="value">${cells[0]?.textContent || '—'}</div></div>
@@ -169,12 +169,12 @@
         } else {
           document.getElementById('modalTitle').textContent = a.student_name + ' — ' + a.slot;
           document.getElementById('modalBody').innerHTML = `
-            <div class="modal-field"><label>Tutor</label><div class="value">${a.tutor_name || '—'}</div></div>
-            <div class="modal-field"><label>Phone</label><div class="value">${a.phone || '—'}</div></div>
-            <div class="modal-field"><label>Demo Date</label><div class="value">${a.date || '—'}</div></div>
-            <div class="modal-field"><label>Demo Time</label><div class="value">${a.time || '—'}</div></div>
-            <div class="modal-field"><label>Student Age</label><div class="value">${a.student_age}</div></div>
-            <div class="modal-field"><label>Language</label><div class="value">${a.language}</div></div>
+            <div class="modal-field"><label>Tutor</label><div class="value">${a.tutor_name || cells[8]?.textContent || '—'}</div></div>
+            <div class="modal-field"><label>Phone</label><div class="value">${a.phone || cells[10]?.textContent || '—'}</div></div>
+            <div class="modal-field"><label>Demo Date</label><div class="value">${a.date || cells[0]?.textContent || '—'}</div></div>
+            <div class="modal-field"><label>Demo Time</label><div class="value">${a.time || cells[1]?.textContent || '—'}</div></div>
+            <div class="modal-field"><label>Student Age</label><div class="value">${a.student_age || cells[4]?.textContent || '—'}</div></div>
+            <div class="modal-field"><label>Language</label><div class="value">${a.language || cells[5]?.textContent || '—'}</div></div>
             <div class="modal-field"><label>Level</label><div class="value"><span class="status-badge ${a.level}">${a.level}</span></div></div>
             ${a.topics_known.length ? `<div class="modal-field"><label>Topics Known</label><div class="topic-chips">${a.topics_known.map(t => `<span class="topic-chip">${t}</span>`).join('')}</div></div>` : ''}
             ${a.topics_covered.length ? `<div class="modal-field"><label>Topics Covered During Demo</label><div class="topic-chips">${a.topics_covered.map(t => `<span class="topic-chip">${t}</span>`).join('')}</div></div>` : ''}
