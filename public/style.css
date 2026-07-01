@@ -1103,7 +1103,15 @@ tbody tr.row-AssessmentPending:hover { background: rgba(217, 119, 6, 0.16); }
   resize: vertical;
 }
 
-/* Responsive */
+.btn-big-not-done {
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  padding:10px 20px;border-radius:var(--radius-sm);border:2px solid var(--danger);
+  background:var(--danger-light);color:var(--danger);font-size:0.85rem;font-weight:700;
+  cursor:pointer;transition:all var(--transition);width:100%;box-sizing:border-box;
+  letter-spacing:0.3px;
+}
+.btn-big-not-done:hover { background:var(--danger);color:#fff;transform:scale(1.02); }
+.btn-big-not-done:active { transform:scale(0.98); }
 @media (max-width: 768px) {
   .sidebar {
     transform: translateX(-100%);
