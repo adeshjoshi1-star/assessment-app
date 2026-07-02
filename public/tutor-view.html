@@ -292,13 +292,17 @@
         tbody.innerHTML = entries.map((e, i) => {
           const a = assessments[i];
           const esc = s => (s || '').replace(/'/g, "\\'");
+          const escAttr = s => (s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
           const row = e.row;
           const st = e.demo_status || 'New';
           const isOld = row <= 3964;
 
+          // Store all entry data as data attributes for click handler
+          const dataAttrs = `data-row="${row}" data-tutor="${escAttr(e.tutor_name)}" data-student="${escAttr(e.student_name)}" data-slot="${escAttr(e.slot)}" data-date="${escAttr(e.date)}" data-time="${escAttr(e.time)}" data-age="${escAttr(e.age)}" data-lang="${escAttr(e.language)}"`;
+
           // Old rows: just display raw status
           if (isOld) {
-            return `<tr style="cursor:default" data-row="${row}" class="row-${rowClass(st)}">
+            return `<tr style="cursor:default" ${dataAttrs} class="row-${rowClass(st)}">
               <td>${e.time || '-'}</td>
               <td>${e.date || '-'}</td>
               <td>${e.slot || '-'}</td>
@@ -312,14 +316,14 @@
           const btn = a
             ? `<button class="btn btn-secondary" style="padding:4px 10px;font-size:0.8rem" data-row="${row}" onclick="viewAssessmentByRow(${row})">View</button>`
             : st === 'New'
-              ? `<button class="btn btn-primary" style="padding:4px 10px;font-size:0.8rem" data-row="${row}" onclick="openForm(${row},'${esc(e.tutor_name)}','${esc(e.student_name)}','${esc(e.slot)}','${esc(e.date)}','${esc(e.time)}','${esc(e.age)}','${esc(e.language)}')">Assess</button>`
+              ? `<button class="btn btn-primary assess-btn" style="padding:4px 10px;font-size:0.8rem">Assess</button>`
               : '—';
 
           const statusHtml = st === 'New' && !a
             ? `<button class="btn-big-not-done" onclick="event.stopPropagation();markNotDone(${row})">✕ Demo Not Done</button>`
             : `<span class="status-badge ${rowClass(st)}">${st}</span>`;
 
-          return `<tr style="cursor:${a || st === 'New' ? 'pointer' : 'default'}" data-row="${row}" class="row-${rowClass(st)}">
+          return `<tr style="cursor:${a || st === 'New' ? 'pointer' : 'default'}" ${dataAttrs} class="row-${rowClass(st)}">
             <td>${e.time || '-'}</td>
             <td>${e.date || '-'}</td>
             <td>${e.slot || '-'}</td>
@@ -338,15 +342,23 @@
       const tr = e.target.closest('tr[data-row]');
       if (!tr || e.target.tagName === 'BUTTON') return;
       const row = parseInt(tr.dataset.row);
-      if (row <= 3964) return; // Old rows: no action
-      const res = await fetch('/api/assessments/by-row/' + row + '?tutor=' + encodeURIComponent(tutorName));
-      const a = await res.json();
+      if (row <= 3964) return;
+      const a = await fetch('/api/assessments/by-row/' + row + '?tutor=' + encodeURIComponent(tutorName)).then(r => r.json()).catch(() => null);
       if (a) {
         viewAssessmentByRow(row);
       } else {
-            const btn = tr.querySelector('.btn-primary');
-        if (btn) btn.click();
+        openForm(row, tr.dataset.tutor, tr.dataset.student, tr.dataset.slot, tr.dataset.date, tr.dataset.time, tr.dataset.age, tr.dataset.lang);
       }
+    });
+
+    // "Assess" buttons use data attributes from the row
+    document.getElementById('tableBody').addEventListener('click', (e) => {
+      const btn = e.target.closest('.assess-btn');
+      if (!btn) return;
+      e.stopPropagation();
+      const tr = btn.closest('tr[data-row]');
+      if (!tr) return;
+      openForm(parseInt(tr.dataset.row), tr.dataset.tutor, tr.dataset.student, tr.dataset.slot, tr.dataset.date, tr.dataset.time, tr.dataset.age, tr.dataset.lang);
     });
 
     async function viewAssessmentByRow(row) {
@@ -503,8 +515,14 @@
         additional_remarks: document.getElementById('form_remarks').value
       };
 
-      if (!payload.tutor_name || !payload.student_age || !payload.language || !payload.feedback || !payload.interest_level) {
-        alert('Please fill all required fields');
+      const missing = [];
+      if (!payload.tutor_name) missing.push('Tutor Name');
+      if (!payload.student_age) missing.push('Student Age');
+      if (!payload.language) missing.push('Language');
+      if (!payload.feedback) missing.push('Feedback');
+      if (!payload.interest_level) missing.push('Interest Level');
+      if (missing.length) {
+        alert('Please fill: ' + missing.join(', '));
         return;
       }
 
