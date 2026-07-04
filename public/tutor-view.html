@@ -295,22 +295,9 @@
           const escAttr = s => (s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
           const row = e.row;
           const st = e.demo_status || 'New';
-          const isOld = row <= 3964;
 
           // Store all entry data as data attributes for click handler
           const dataAttrs = `data-row="${row}" data-tutor="${escAttr(e.tutor_name)}" data-student="${escAttr(e.student_name)}" data-slot="${escAttr(e.slot)}" data-date="${escAttr(e.date)}" data-time="${escAttr(e.time)}" data-age="${escAttr(e.age)}" data-lang="${escAttr(e.language)}"`;
-
-          // Old rows: just display raw status
-          if (isOld) {
-            return `<tr style="cursor:default" ${dataAttrs} class="row-${rowClass(st)}">
-              <td>${e.time || '-'}</td>
-              <td>${e.date || '-'}</td>
-              <td>${e.slot || '-'}</td>
-              <td><strong>${e.student_name || '-'}</strong></td>
-              <td><span class="status-badge ${rowClass(st)}">${st}</span></td>
-              <td>—</td>
-            </tr>`;
-          }
 
           // New rows
           const btn = a
@@ -342,7 +329,6 @@
       const tr = e.target.closest('tr[data-row]');
       if (!tr || e.target.tagName === 'BUTTON') return;
       const row = parseInt(tr.dataset.row);
-      if (row <= 3964) return;
       const a = await fetch('/api/assessments/by-row/' + row + '?tutor=' + encodeURIComponent(tutorName)).then(r => r.json()).catch(() => null);
       if (a) {
         viewAssessmentByRow(row);

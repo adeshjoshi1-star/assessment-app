@@ -107,14 +107,26 @@ const TUTOR_NAME_ALIASES = {
   'ashitha km': 'Ashitha KM',
   'ashitaa': 'Ashitha KM',
   'ashitaa k m': 'Ashitha KM',
+  'lakshya': 'Lakshya',
+  'pavan': 'Pavan',
+  'sahil': 'Sahil',
+  'selin': 'Selin',
+  'vishnu': 'Vishnu',
+  'reshma': 'Reshma',
+  'ayswarya': 'Ayswarya',
 };
 
 function normalizeTutorName(raw) {
-  const key = (raw || '').trim().toLowerCase();
-  if (!key || key.length < 3) return null;
-  if (key === 'su') return null;
-  const stripped = key.replace(/[^a-z0-9 ]/g, '');
-  return TUTOR_NAME_ALIASES[key] || TUTOR_NAME_ALIASES[stripped] || raw.trim();
+  let key = (raw || '').trim();
+  if (!key) return null;
+  const lower = key.toLowerCase();
+  if (['no_tutor', 'no_tutor_added', 'no tutor', 'no tutor added', 'unknown', 'deleted', 'none', ''].includes(lower)) return null;
+  if (/^no.?tutor/i.test(key)) return null;
+  if (/^deleted/i.test(key)) return null;
+  if (lower.length < 2) return null;
+  if (lower === 'su') return null;
+  const stripped = lower.replace(/[^a-z0-9 ]/g, '');
+  return TUTOR_NAME_ALIASES[lower] || TUTOR_NAME_ALIASES[stripped] || key.charAt(0).toUpperCase() + key.slice(1);
 }
 
 function syncTutorsFromSheet() {
@@ -434,12 +446,10 @@ app.post('/api/assessments', async (req, res) => {
       sheet_row || null
     );
     if (sheet_row) {
-      if (sheet_row > 3964) {
-        updateSheetRow(sheet_row, 'Demo Done');
-        db.prepare("INSERT INTO sheet_statuses (row_number, status, demo_status) VALUES (?, ?, ?) ON CONFLICT(row_number) DO UPDATE SET status = ?, demo_status = ?, updated_at = CURRENT_TIMESTAMP").run(sheet_row, 'Demo Done', 'Demo Done', 'Demo Done', 'Demo Done');
-        const entry = sheetDataCache.find(e => e.row === parseInt(sheet_row));
-        if (entry) { entry.status = 'Demo Done'; entry.demo_status = 'Demo Done'; }
-      }
+      updateSheetRow(sheet_row, 'Demo Done');
+      db.prepare("INSERT INTO sheet_statuses (row_number, status, demo_status) VALUES (?, ?, ?) ON CONFLICT(row_number) DO UPDATE SET status = ?, demo_status = ?, updated_at = CURRENT_TIMESTAMP").run(sheet_row, 'Demo Done', 'Demo Done', 'Demo Done', 'Demo Done');
+      const entry = sheetDataCache.find(e => e.row === parseInt(sheet_row));
+      if (entry) { entry.status = 'Demo Done'; entry.demo_status = 'Demo Done'; }
     } else {
       const newRow = await appendToSheet({
         demo_status: 'Demo Done',
@@ -531,12 +541,10 @@ app.delete('/api/assessments/by-row/:row', async (req, res) => {
   try {
     const row = parseInt(req.params.row);
     db.prepare('DELETE FROM assessments WHERE sheet_row = ?').run(row);
-    if (row > 3964) {
-      db.prepare("INSERT INTO sheet_statuses (row_number, status, demo_status) VALUES (?, ?, ?) ON CONFLICT(row_number) DO UPDATE SET status = ?, demo_status = ?, updated_at = CURRENT_TIMESTAMP").run(row, 'New', 'New', 'New', 'New');
-      const entry = sheetDataCache.find(e => e.row === row);
-      if (entry) { entry.status = 'New'; entry.demo_status = 'New'; }
-    }
-    if (row > 3964) await updateSheetRow(row, '');
+    db.prepare("INSERT INTO sheet_statuses (row_number, status, demo_status) VALUES (?, ?, ?) ON CONFLICT(row_number) DO UPDATE SET status = ?, demo_status = ?, updated_at = CURRENT_TIMESTAMP").run(row, 'New', 'New', 'New', 'New');
+    const entry = sheetDataCache.find(e => e.row === row);
+    if (entry) { entry.status = 'New'; entry.demo_status = 'New'; }
+    await updateSheetRow(row, '');
     res.json({ success: true });
   } catch (err) {
     console.error(err);
@@ -753,7 +761,7 @@ async function syncSheet() {
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       if (r[0] === 'ETE - please don\'t delete' || ((!r[0] || r[0].trim() === '') && (!r[8] || r[8].trim() === ''))) continue;
-      if (i + 1 < 2904) continue;
+      if (i + 1 < 2) continue;
       const rawName = (r[8] || '').trim();
       const normalized = normalizeTutorName(rawName);
       if (!normalized) continue;
@@ -761,23 +769,17 @@ async function syncSheet() {
       const sheetDemo = (r[0] || '').trim() || 'New';
       const storedDemo = ss ? ss.demo_status : null;
       let useDemo;
-      if (i + 1 <= 3964) {
-        // Old rows (June 1-30): use raw sheet column A value, no modifications
-        useDemo = sheetDemo;
+      const hasAssessment = db.prepare('SELECT id FROM assessments WHERE sheet_row = ? LIMIT 1').get(i + 1);
+      if (storedDemo === 'Demo Not Done') {
+        useDemo = 'Demo Not Done';
+      } else if (hasAssessment) {
+        useDemo = 'Demo Done';
+      } else if (sheetDemo === 'Demo Not Done') {
+        useDemo = 'Demo Not Done';
+      } else if (sheetDemo === 'Converted' || storedDemo === 'Converted') {
+        useDemo = 'Converted';
       } else {
-        // New rows (July 1+): real assessment-based status
-        const hasAssessment = db.prepare('SELECT id FROM assessments WHERE sheet_row = ? LIMIT 1').get(i + 1);
-        if (storedDemo === 'Demo Not Done') {
-          useDemo = 'Demo Not Done';
-        } else if (hasAssessment) {
-          useDemo = 'Demo Done';
-        } else if (sheetDemo === 'Demo Not Done') {
-          useDemo = 'Demo Not Done';
-        } else if (sheetDemo === 'Converted' || storedDemo === 'Converted') {
-          useDemo = 'Converted';
-        } else {
-          useDemo = 'New';
-        }
+        useDemo = 'New';
       }
       entries.push({
         row: i + 1,
@@ -794,9 +796,13 @@ async function syncSheet() {
         status: ss ? ss.status : 'New',
       });
     }
-    sheetDataCache = entries;
+    // Filter to only known tutors from users table
+    const allTeachers = db.prepare("SELECT id, name, code FROM users WHERE role = 'teacher' AND code IS NOT NULL AND code != ''").all();
+    const knownTutorNames = new Set(allTeachers.map(t => t.name.trim().toLowerCase()));
+    const filtered = entries.filter(e => knownTutorNames.has(e.tutor_name.toLowerCase()));
+    sheetDataCache = filtered;
     lastSync = new Date().toISOString();
-    console.log(`Sheet synced: ${entries.length} entries`);
+    console.log(`Sheet synced: ${filtered.length} entries (filtered from ${entries.length})`);
     syncTutorsFromSheet();
     fixExistingMismatches();
     backfillAssessments();
@@ -820,7 +826,7 @@ function fixExistingMismatches() {
   const assessments = db.prepare('SELECT id, sheet_row, tutor_name, student_name FROM assessments WHERE sheet_row IS NOT NULL').all();
   let fixed = 0;
   for (const a of assessments) {
-    if (!a.sheet_row || a.sheet_row <= 3964) continue;
+    if (!a.sheet_row) continue;
     const entry = sheetDataCache.find(e => e.row === a.sheet_row);
     if (!entry) continue;
     const ds = entry.demo_status || '';
@@ -841,7 +847,6 @@ function backfillAssessments() {
   const assessments = db.prepare('SELECT * FROM assessments WHERE sheet_row IS NOT NULL').all();
   let cleared = 0;
   for (const a of assessments) {
-    if (a.sheet_row <= 3964) continue;
     const entry = sheetDataCache.find(e => e.row === a.sheet_row);
     if (!entry) {
       db.prepare('UPDATE assessments SET sheet_row = NULL WHERE id = ?').run(a.id);
@@ -878,9 +883,9 @@ function backfillAssessments() {
       if (e.time.toLowerCase().replace(/\s+/g, '') !== a.time.toLowerCase().replace(/\s+/g, '')) return false;
       return true;
     });
-    if (entry) {
+      if (entry) {
       db.prepare('UPDATE assessments SET sheet_row = ? WHERE id = ?').run(entry.row, a.id);
-      if (entry.row > 3964 && entry.demo_status === 'New') {
+      if (entry.demo_status === 'New') {
         updateSheetRow(entry.row, 'Demo Done');
         entry.demo_status = 'Demo Done';
         db.prepare("INSERT INTO sheet_statuses (row_number, status, demo_status) VALUES (?, ?, ?) ON CONFLICT(row_number) DO UPDATE SET demo_status = ?, updated_at = CURRENT_TIMESTAMP").run(entry.row, 'New', 'Demo Done', 'Demo Done');
@@ -1054,6 +1059,14 @@ app.post('/api/sync-sheet', requireAuth, async (req, res) => {
 syncSheet();
 initAssessmentSheet();
 syncTutorCodesToSheet();
+// Remove bad tutor entries (leftover from original migration)
+setTimeout(() => {
+  const badNames = db.prepare("SELECT id, name FROM users WHERE role = 'teacher' AND (name LIKE '%no_tutor%' OR name LIKE '%deleted%' OR name LIKE '%unknown%' OR name IS NULL OR name = '')").all();
+  for (const b of badNames) {
+    db.prepare('DELETE FROM users WHERE id = ?').run(b.id);
+    console.log('Removed bad tutor entry:', b.name);
+  }
+}, 500);
 setTimeout(syncSheet, 5000);
 setTimeout(syncSheet, 15000);
 setTimeout(syncTutorCodesToSheet, 10000);
