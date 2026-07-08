@@ -14,12 +14,12 @@
   --text-secondary: #57534e;
   --text-muted: #a8a29e;
   --border: rgba(200, 195, 185, 0.5);
-  --primary: #156356;
-  --primary-dark: #0d4f44;
-  --primary-light: rgba(21, 99, 86, 0.08);
-  --primary-glow: rgba(21, 99, 86, 0.06);
-  --success: #156356;
-  --success-light: rgba(21, 99, 86, 0.06);
+  --primary: #6b7280;
+  --primary-dark: #4b5563;
+  --primary-light: rgba(107, 114, 128, 0.08);
+  --primary-glow: rgba(107, 114, 128, 0.06);
+  --success: #6b7280;
+  --success-light: rgba(107, 114, 128, 0.06);
   --danger: #b45309;
   --danger-light: rgba(180, 83, 9, 0.06);
   --warning: #d97706;
@@ -87,7 +87,7 @@ a:hover {
 
 .auth-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 16px 50px rgba(99, 102, 241, 0.15);
+  box-shadow: 0 16px 50px rgba(107, 114, 128, 0.15);
 }
 
 .auth-card h1 {
@@ -95,7 +95,7 @@ a:hover {
   font-weight: 800;
   margin-bottom: 4px;
   letter-spacing: -0.5px;
-  background: linear-gradient(135deg, var(--primary), #25af98);
+  background: linear-gradient(135deg, var(--primary), #9ca3af);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -301,7 +301,7 @@ a:hover {
 
 .sidebar-header i {
   font-size: 1.4rem;
-  background: linear-gradient(135deg, var(--primary), #25af98);
+  background: linear-gradient(135deg, var(--primary), #9ca3af);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -511,7 +511,7 @@ a:hover {
   content: '';
   width: 4px;
   height: 24px;
-  background: linear-gradient(180deg, var(--primary), #25af98);
+  background: linear-gradient(180deg, var(--primary), #9ca3af);
   border-radius: 2px;
   display: inline-block;
 }
@@ -806,7 +806,7 @@ tbody tr:nth-child(even):hover {
 
 /* Status badge colors */
 .status-badge.New { background: rgba(37, 99, 235, 0.1); color: #1d4ed8; }
-.status-badge.Contacted { background: rgba(99, 102, 241, 0.1); color: #4338ca; }
+.status-badge.Contacted { background: rgba(107, 114, 128, 0.1); color: #6b7280; }
 .status-badge.CNR { background: rgba(219, 39, 119, 0.1); color: #9d174d; }
 .status-badge.Hot { background: rgba(147, 51, 234, 0.1); color: #7c3aed; }
 .status-badge.Not { background: rgba(220, 38, 38, 0.1); color: #dc2626; }
@@ -815,7 +815,7 @@ tbody tr:nth-child(even):hover {
 .status-badge.DemoCancelled { background: rgba(239, 68, 68, 0.1); color: #dc2626; }
 .status-badge.DemoNotDone { background: rgba(239, 68, 68, 0.1); color: #dc2626; }
 .status-badge.Converted { background: rgba(22, 163, 74, 0.1); color: #15803d; }
-.status-badge.Beginner { background: rgba(21, 99, 86, 0.1); color: #0f766e; }
+.status-badge.Beginner { background: rgba(107, 114, 128, 0.1); color: #6b7280; }
 .status-badge.Intermediate { background: rgba(217, 119, 6, 0.1); color: #b45309; }
 .status-badge.Advanced { background: rgba(147, 51, 234, 0.1); color: #7c3aed; }
 
@@ -890,7 +890,7 @@ tbody tr.row-AssessmentPending:hover { background: rgba(217, 119, 6, 0.16); }
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border-radius: var(--radius);
-  box-shadow: 0 20px 60px rgba(21, 99, 86, 0.1), 0 4px 20px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 20px 60px rgba(107, 114, 128, 0.1), 0 4px 20px rgba(0, 0, 0, 0.08);
   width: 100%;
   max-width: 700px;
   max-height: 90vh;
@@ -969,7 +969,7 @@ tbody tr.row-AssessmentPending:hover { background: rgba(217, 119, 6, 0.16); }
   font-weight: 500;
   background: var(--primary-light);
   color: var(--primary);
-  border: 1px solid rgba(21, 99, 86, 0.15);
+  border: 1px solid rgba(107, 114, 128, 0.15);
 }
 
 .modal-status {
@@ -1006,7 +1006,7 @@ tbody tr.row-AssessmentPending:hover { background: rgba(217, 119, 6, 0.16); }
   text-align: center;
   padding: 20px;
   background: var(--bg);
-  background-image: radial-gradient(ellipse 80% 50% at 50% 0%, rgba(21, 99, 86, 0.06) 0%, transparent 60%),
+  background-image: radial-gradient(ellipse 80% 50% at 50% 0%, rgba(107, 114, 128, 0.06) 0%, transparent 60%),
                     radial-gradient(ellipse 60% 40% at 50% 100%, rgba(180, 83, 9, 0.04) 0%, transparent 50%);
 }
 
@@ -1015,7 +1015,7 @@ tbody tr.row-AssessmentPending:hover { background: rgba(217, 119, 6, 0.16); }
   font-weight: 800;
   margin-bottom: 8px;
   letter-spacing: -0.5px;
-  background: linear-gradient(135deg, #156356, #25af98, #d97706);
+  background: linear-gradient(135deg, #6b7280, #9ca3af, #d97706);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -1042,7 +1042,7 @@ tbody tr.row-AssessmentPending:hover { background: rgba(217, 119, 6, 0.16); }
 }
 
 .landing-actions .btn-primary {
-  box-shadow: 0 4px 20px rgba(21, 99, 86, 0.3);
+  box-shadow: 0 4px 20px rgba(107, 114, 128, 0.3);
 }
 
 .landing-actions .btn-secondary {
