@@ -276,7 +276,10 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-app.get('/api/admin/tutors', requireAuth, requireAdmin, (req, res) => {
+app.get('/api/admin/tutors/debug-raw', requireAuth, requireAdmin, (req, res) => {
+  const tutors = db.prepare("SELECT id, name, code, role, created_at FROM users WHERE role = 'teacher' ORDER BY name ASC").all();
+  res.json(tutors);
+});
   const tutors = db.prepare("SELECT id, name, code, role, created_at FROM users WHERE role = 'teacher' ORDER BY created_at DESC").all();
   const seen = new Set();
   const deduped = [];
@@ -326,15 +329,29 @@ app.post('/api/admin/tutors/:id/reset-code', requireAuth, requireAdmin, (req, re
   try {
     const tutor = db.prepare('SELECT id, name FROM users WHERE id = ? AND role = ?').get(req.params.id, 'teacher');
     if (!tutor) return res.status(404).json({ error: 'Tutor not found' });
-    const existingCodes = new Set(db.prepare("SELECT code FROM users WHERE role = 'teacher' AND code IS NOT NULL AND id != ?").all(tutor.id).map(r => r.code));
+    const canon = TUTOR_NAME_ALIASES[tutor.name.trim().toLowerCase()] || tutor.name.trim();
+    const canonKey = canon.toLowerCase();
+    const allTeachers = db.prepare("SELECT id, name, code FROM users WHERE role = 'teacher'").all();
+    const existingCodes = new Set();
+    const sameTutorIds = [];
+    for (const t of allTeachers) {
+      const tCanon = (TUTOR_NAME_ALIASES[t.name.trim().toLowerCase()] || t.name.trim()).toLowerCase();
+      if (tCanon === canonKey) {
+        sameTutorIds.push(t.id);
+        continue;
+      }
+      if (t.code) existingCodes.add(t.code);
+    }
     let code;
     for (let i = 1; i <= 9999; i++) {
       const c = String(i).padStart(4, '0');
       if (!existingCodes.has(c)) { code = c; break; }
     }
     if (!code) return res.status(500).json({ error: 'No available codes' });
-    db.prepare('UPDATE users SET code = ? WHERE id = ?').run(code, tutor.id);
-    res.json({ success: true, code });
+    for (const id of sameTutorIds) {
+      db.prepare('UPDATE users SET code = ? WHERE id = ?').run(code, id);
+    }
+    res.json({ success: true, code, updatedCount: sameTutorIds.length });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
