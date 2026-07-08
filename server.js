@@ -280,6 +280,8 @@ app.get('/api/admin/tutors/debug-raw', requireAuth, requireAdmin, (req, res) => 
   const tutors = db.prepare("SELECT id, name, code, role, created_at FROM users WHERE role = 'teacher' ORDER BY name ASC").all();
   res.json(tutors);
 });
+
+app.get('/api/admin/tutors', requireAuth, requireAdmin, (req, res) => {
   const tutors = db.prepare("SELECT id, name, code, role, created_at FROM users WHERE role = 'teacher' ORDER BY created_at DESC").all();
   const seen = new Set();
   const deduped = [];
