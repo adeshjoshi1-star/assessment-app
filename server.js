@@ -322,6 +322,25 @@ app.delete('/api/admin/tutors/:id', requireAuth, requireAdmin, (req, res) => {
   res.json({ success: true });
 });
 
+app.post('/api/admin/tutors/:id/reset-code', requireAuth, requireAdmin, (req, res) => {
+  try {
+    const tutor = db.prepare('SELECT id, name FROM users WHERE id = ? AND role = ?').get(req.params.id, 'teacher');
+    if (!tutor) return res.status(404).json({ error: 'Tutor not found' });
+    const existingCodes = new Set(db.prepare("SELECT code FROM users WHERE role = 'teacher' AND code IS NOT NULL AND id != ?").all(tutor.id).map(r => r.code));
+    let code;
+    for (let i = 1; i <= 9999; i++) {
+      const c = String(i).padStart(4, '0');
+      if (!existingCodes.has(c)) { code = c; break; }
+    }
+    if (!code) return res.status(500).json({ error: 'No available codes' });
+    db.prepare('UPDATE users SET code = ? WHERE id = ?').run(code, tutor.id);
+    res.json({ success: true, code });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 function requireTutor(req, res, next) {
   if (!req.session.userId || req.session.role !== 'teacher') {
     return res.status(401).json({ error: 'Tutor access required' });

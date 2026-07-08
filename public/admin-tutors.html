@@ -139,7 +139,7 @@
         return `<tr>
           <td>${i + 1}</td>
           <td class="tutor-name-cell">${t.name}</td>
-          <td class="code-cell">${t.code || '-'}</td>
+          <td class="code-cell">${t.code || '-'} <button class="btn btn-sm" style="font-size:0.7rem;padding:2px 8px;margin-left:4px" onclick="resetCode(${t.id}, this)">Reset</button></td>
           <td class="stat-cell stat-demo">${totalDone}</td>
           <td class="stat-cell stat-converted">${converted}</td>
         </tr>`;
@@ -243,6 +243,28 @@
         alert('Server error');
         btn.disabled = false;
         btn.textContent = 'Update';
+      }
+    }
+
+    async function resetCode(id, btn) {
+      if (!confirm('Reset this tutor\'s code? They will need the new code to log in.')) return;
+      btn.disabled = true;
+      btn.textContent = '...';
+      try {
+        const res = await fetch('/api/admin/tutors/' + id + '/reset-code', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          alert('New code: ' + data.code);
+          loadAll();
+        } else {
+          alert(data.error || 'Failed');
+          btn.disabled = false;
+          btn.textContent = 'Reset';
+        }
+      } catch (err) {
+        alert('Server error');
+        btn.disabled = false;
+        btn.textContent = 'Reset';
       }
     }
 
