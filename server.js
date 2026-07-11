@@ -1330,7 +1330,8 @@ async function backfillPhonesToTrialSheet() {
           valueInputOption: 'USER_ENTERED',
           requestBody: { values: [[phone]] },
         });
-        cacheEntry.phone = phone;
+        const currentEntry = sheetDataCache.find(e => e.row === cacheEntry.row);
+        if (currentEntry) currentEntry.phone = phone;
         updated++;
       } catch (e) {
         console.error(`Failed updating Trial 2.0 row ${cacheEntry.row} phone:`, e.message);
@@ -1389,6 +1390,26 @@ app.get('/api/search-phone/:phone', requireAuth, requireAdmin, async (req, res) 
     res.json({ searchPhone: target, found: found.length, results: found });
   } catch (err) {
     console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/check-trial-row/:row', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const sheets = getSheetsClient();
+    const rowNum = parseInt(req.params.row);
+    const result = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `'Trial 2.0'!A${rowNum}:R${rowNum}`,
+    });
+    const row = result.data.values ? result.data.values[0] : [];
+    res.json({
+      trialRow: rowNum,
+      columns: ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R'],
+      values: row,
+      phoneColumnR: row[17] || '',
+    });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
