@@ -1398,19 +1398,18 @@ app.get('/api/check-trial-row/:row', requireAuth, requireAdmin, async (req, res)
   try {
     const sheets = getSheetsClient();
     const rowNum = parseInt(req.params.row);
-    // Read single row with explicit range
     const result = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
       range: `'Trial 2.0'!A${rowNum}:R${rowNum}`,
     });
     const row = result.data.values ? result.data.values[0] : [];
-    // Read via A:R to compare
     const allResult = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
       range: `'Trial 2.0'!A:R`,
     });
     const allRows = allResult.data.values || [];
     const allRow = allRows[rowNum - 1] || [];
+    const cacheEntry = sheetDataCache.find(e => e.row === rowNum);
     res.json({
       trialRow: rowNum,
       columns: ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R'],
@@ -1418,9 +1417,64 @@ app.get('/api/check-trial-row/:row', requireAuth, requireAdmin, async (req, res)
       phoneExplicit: row[17] || '',
       valuesAllRange: allRow,
       phoneAllRange: allRow[17] || '',
+      cachePhone: cacheEntry ? (cacheEntry.phone || '') : null,
+      inCache: !!cacheEntry,
       explicitLength: row.length,
       allRangeLength: allRow.length,
       allRowsTotal: allRows.length,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/diagnose-phones', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const sheets = getSheetsClient();
+    const asRange = `'${assessmentSheetTab}'!A:R`;
+    const asResult = await sheets.spreadsheets.values.get({
+      spreadsheetId: ASSESSMENTS_SHEET_ID,
+      range: asRange,
+    });
+    const asRows = asResult.data.values || [];
+    let hasPhone = 0, noPhone = 0, matched = 0, phoneMatch = 0, phoneDiff = 0, noMatch = 0;
+    for (let i = 1; i < asRows.length; i++) {
+      const row = asRows[i];
+      const phone = (row[2] || '').trim();
+      const tutor = (row[1] || '').trim();
+      const student = cleanStudentName(row[3] || '').trim();
+      if (!phone) { noPhone++; continue; }
+      if (!tutor || !student) { noPhone++; continue; }
+      hasPhone++;
+      const ce = sheetDataCache.find(e =>
+        e.tutor_name.toLowerCase() === tutor.toLowerCase() &&
+        cleanStudentName(e.student_name).toLowerCase() === student.toLowerCase()
+      );
+      if (!ce) { noMatch++; continue; }
+      matched++;
+      if ((ce.phone || '') === phone) { phoneMatch++; continue; }
+      phoneDiff++;
+    }
+    // Also check Trial 2.0 direct for rows with phones in cache but phone missing
+    const trialRange = `'Trial 2.0'!A:R`;
+    const trialResult = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: trialRange,
+    });
+    const trialRows = trialResult.data.values || [];
+    let trialWithPhone = 0, trialTotal = 0;
+    for (let i = 0; i < trialRows.length; i++) {
+      if ((trialRows[i][8] || '').trim() && i + 1 >= 2) {
+        trialTotal++;
+        if ((trialRows[i][17] || '').trim()) trialWithPhone++;
+      }
+    }
+    res.json({
+      assessmentRows: asRows.length - 1,
+      hasPhone, noPhone, matched, phoneMatch, phoneDiff, noMatch,
+      trialTotal,
+      trialWithPhone,
+      trialNoPhone: trialTotal - trialWithPhone,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
