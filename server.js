@@ -1469,12 +1469,35 @@ app.get('/api/diagnose-phones', requireAuth, requireAdmin, async (req, res) => {
         if ((trialRows[i][17] || '').trim()) trialWithPhone++;
       }
     }
+    // Find specifics
+    const diffs = [];
+    const noMatches = [];
+    for (let i = 1; i < asRows.length; i++) {
+      const row = asRows[i];
+      const phone = (row[2] || '').trim();
+      const tutor = (row[1] || '').trim();
+      const student = cleanStudentName(row[3] || '').trim();
+      if (!phone || !tutor || !student) continue;
+      const ce = sheetDataCache.find(e =>
+        e.tutor_name.toLowerCase() === tutor.toLowerCase() &&
+        cleanStudentName(e.student_name).toLowerCase() === student.toLowerCase()
+      );
+      if (!ce) {
+        noMatches.push({ row: i+1, tutor, student, phone });
+        continue;
+      }
+      if ((ce.phone || '') !== phone) {
+        diffs.push({ row: i+1, tutor, student, asPhone: phone, trialPhone: ce.phone || '', trialRow: ce.row });
+      }
+    }
     res.json({
       assessmentRows: asRows.length - 1,
       hasPhone, noPhone, matched, phoneMatch, phoneDiff, noMatch,
       trialTotal,
       trialWithPhone,
       trialNoPhone: trialTotal - trialWithPhone,
+      diffs,
+      noMatches,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
