@@ -1161,7 +1161,7 @@ async function backfillAssessmentSheetPhones() {
       range,
     });
     const rows = res.data.values || [];
-    if (rows.length < 2) { console.log('Assessment sheet has no data rows'); return; }
+    if (rows.length < 2) { console.log('Assessment sheet has no data rows'); return 0; }
     let updated = 0;
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
@@ -1185,10 +1185,22 @@ async function backfillAssessmentSheetPhones() {
     } else {
       console.log('No phone numbers needed backfill in Assessment Sheet');
     }
+    return updated;
   } catch (err) {
     console.error('Assessment sheet phone backfill error:', err.message);
+    return -1;
   }
 }
+
+app.post('/api/backfill-phones', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const count = await backfillAssessmentSheetPhones();
+    res.json({ success: true, phoneBackfill: count });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 app.post('/api/recover-assessments', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -1209,10 +1221,10 @@ app.post('/api/recover-assessments', requireAuth, requireAdmin, async (req, res)
         appended++;
       }
     }
-    await backfillAssessmentSheetPhones();
+    const phoneResult = await backfillAssessmentSheetPhones();
     const linked = db.prepare("SELECT COUNT(*) as cnt FROM assessments WHERE sheet_row IS NOT NULL").get().cnt;
     const unlinked = db.prepare("SELECT COUNT(*) as cnt FROM assessments WHERE sheet_row IS NULL AND tutor_name != '' AND student_name != '' AND slot != ''").get().cnt;
-    res.json({ success: true, totalLinked: linked, totalUnlinked: unlinked, appendedNew: appended, skipped: missing.length - appended });
+    res.json({ success: true, totalLinked: linked, totalUnlinked: unlinked, appendedNew: appended, skipped: missing.length - appended, phoneBackfill: phoneResult });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
