@@ -484,17 +484,27 @@ app.post('/api/assessments', async (req, res) => {
       feedback, interest_level || 0, additional_remarks || '', date || '', time || '',
       sheetRowValue
     );
-    if (sheetRowValue) {
-      updateSheetRow(sheetRowValue, 'Demo Done');
-      db.prepare("INSERT INTO sheet_statuses (row_number, status, demo_status) VALUES (?, ?, ?) ON CONFLICT(row_number) DO UPDATE SET status = ?, demo_status = ?, updated_at = CURRENT_TIMESTAMP").run(sheetRowValue, 'Demo Done', 'Demo Done', 'Demo Done', 'Demo Done');
-      const entry = sheetDataCache.find(e => e.row === sheetRowValue);
+    let resolvedPhone = phone;
+    let resolvedSheetRow = sheetRowValue;
+    if (!resolvedSheetRow) {
+      const cached = sheetDataCache.find(e => e.tutor_name.toLowerCase() === (tutor_name || '').toLowerCase() && e.student_name.toLowerCase() === (student_name || '').toLowerCase() && e.slot === slot);
+      if (cached) resolvedSheetRow = cached.row;
+    }
+    if (!resolvedPhone) {
+      const cached = resolvedSheetRow ? sheetDataCache.find(e => e.row === resolvedSheetRow) : sheetDataCache.find(e => e.tutor_name.toLowerCase() === (tutor_name || '').toLowerCase() && e.student_name.toLowerCase() === (student_name || '').toLowerCase());
+      if (cached && cached.phone) resolvedPhone = cached.phone;
+    }
+    if (resolvedSheetRow) {
+      updateSheetRow(resolvedSheetRow, 'Demo Done');
+      db.prepare("INSERT INTO sheet_statuses (row_number, status, demo_status) VALUES (?, ?, ?) ON CONFLICT(row_number) DO UPDATE SET status = ?, demo_status = ?, updated_at = CURRENT_TIMESTAMP").run(resolvedSheetRow, 'Demo Done', 'Demo Done', 'Demo Done', 'Demo Done');
+      const entry = sheetDataCache.find(e => e.row === resolvedSheetRow);
       if (entry) { entry.status = 'Demo Done'; entry.demo_status = 'Demo Done'; }
-      db.prepare('UPDATE assessments SET sheet_row = ? WHERE id = ?').run(sheetRowValue, result.lastInsertRowid);
+      db.prepare('UPDATE assessments SET sheet_row = ? WHERE id = ?').run(resolvedSheetRow, result.lastInsertRowid);
     } else {
       const newRow = await appendToSheet({
         demo_status: 'Demo Done',
         slot, date, time, tutor_name, student_name,
-        age: student_age, language, phone,
+        age: student_age, language, phone: resolvedPhone,
       });
       if (newRow) {
         db.prepare('UPDATE assessments SET sheet_row = ? WHERE id = ?').run(newRow, result.lastInsertRowid);
@@ -502,11 +512,11 @@ app.post('/api/assessments', async (req, res) => {
       }
     }
     appendAssessmentToSheet({
-      tutor_name, phone, slot, student_name,
+      tutor_name, phone: resolvedPhone, slot, student_name,
       student_age, language, level,
       topics_known, topics_covered, start_topic,
       revision_topics, feedback, interest_level,
-      additional_remarks, date, time, sheet_row: sheetRowValue,
+      additional_remarks, date, time, sheet_row: resolvedSheetRow,
     });
     res.json({ success: true });
   } catch (err) {
@@ -1138,7 +1148,46 @@ async function recoverUnlinkedAssessments() {
       appended++;
     }
   }
-  console.log(`Recovery complete: appended ${appended} new rows to Trial 2.0 sheet`);
+  console.log(`Appended ${appended} new rows to Trial 2.0 sheet`);
+  await backfillAssessmentSheetPhones();
+}
+
+async function backfillAssessmentSheetPhones() {
+  try {
+    const sheets = getSheetsClient();
+    const range = `'${assessmentSheetTab}'!A:R`;
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: ASSESSMENTS_SHEET_ID,
+      range,
+    });
+    const rows = res.data.values || [];
+    if (rows.length < 2) { console.log('Assessment sheet has no data rows'); return; }
+    let updated = 0;
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      const phone = (row[2] || '').trim();
+      const sheetRow = (row[17] || '').trim();
+      if (!phone && sheetRow) {
+        const entry = sheetDataCache.find(e => String(e.row) === sheetRow);
+        if (entry && entry.phone) {
+          await sheets.spreadsheets.values.update({
+            spreadsheetId: ASSESSMENTS_SHEET_ID,
+            range: `'${assessmentSheetTab}'!C${i + 1}`,
+            valueInputOption: 'USER_ENTERED',
+            requestBody: { values: [[entry.phone]] },
+          });
+          updated++;
+        }
+      }
+    }
+    if (updated > 0) {
+      console.log(`Backfilled ${updated} phone numbers in Assessment Sheet (tab: ${assessmentSheetTab})`);
+    } else {
+      console.log('No phone numbers needed backfill in Assessment Sheet');
+    }
+  } catch (err) {
+    console.error('Assessment sheet phone backfill error:', err.message);
+  }
 }
 
 app.post('/api/recover-assessments', requireAuth, requireAdmin, async (req, res) => {
@@ -1160,6 +1209,7 @@ app.post('/api/recover-assessments', requireAuth, requireAdmin, async (req, res)
         appended++;
       }
     }
+    await backfillAssessmentSheetPhones();
     const linked = db.prepare("SELECT COUNT(*) as cnt FROM assessments WHERE sheet_row IS NOT NULL").get().cnt;
     const unlinked = db.prepare("SELECT COUNT(*) as cnt FROM assessments WHERE sheet_row IS NULL AND tutor_name != '' AND student_name != '' AND slot != ''").get().cnt;
     res.json({ success: true, totalLinked: linked, totalUnlinked: unlinked, appendedNew: appended, skipped: missing.length - appended });
