@@ -1210,6 +1210,29 @@ app.post('/api/backfill-phones', requireAuth, requireAdmin, async (req, res) => 
   }
 });
 
+app.get('/api/debug/assessment-sheet', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const sheets = getSheetsClient();
+    const range = `'${assessmentSheetTab}'!A:R`;
+    const result = await sheets.spreadsheets.values.get({
+      spreadsheetId: ASSESSMENTS_SHEET_ID,
+      range,
+    });
+    const rows = result.data.values || [];
+    const emptyPhone = [];
+    for (let i = 1; i < Math.min(rows.length, 100); i++) {
+      const row = rows[i];
+      const phone = (row[2] || '').trim();
+      if (!phone) {
+        emptyPhone.push({ row: i + 1, tutor: row[1] || '', student: row[3] || '', sheetRow: row[17] || '' });
+      }
+    }
+    res.json({ totalRows: rows.length, emptyPhoneCount: emptyPhone.length, sample: emptyPhone.slice(0, 20) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/recover-assessments', requireAuth, requireAdmin, async (req, res) => {
   try {
     await syncSheet();
