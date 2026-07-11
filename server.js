@@ -1244,10 +1244,6 @@ app.post('/api/backfill-phones', requireAuth, requireAdmin, async (req, res) => 
   }
 });
 
-function cleanStudentName(name) {
-  return (name || '').replace(/\s*\(.*?\)\s*/g, '').trim();
-}
-
 async function backfillAssessmentFeedbackToTrialSheet() {
   try {
     const sheets = getSheetsClient();
