@@ -1432,13 +1432,15 @@ app.get('/api/check-trial-row/:row', requireAuth, requireAdmin, async (req, res)
 app.get('/api/diagnose-phones', requireAuth, requireAdmin, async (req, res) => {
   try {
     const sheets = getSheetsClient();
-    const asRange = `'${assessmentSheetTab}'!A:R`;
+    const asRange = `'${assessmentSheetTab}'!A:X`;
     const asResult = await sheets.spreadsheets.values.get({
       spreadsheetId: ASSESSMENTS_SHEET_ID,
       range: asRange,
     });
     const asRows = asResult.data.values || [];
     let hasPhone = 0, noPhone = 0, matched = 0, phoneMatch = 0, phoneDiff = 0, noMatch = 0;
+    const diffs = [];
+    const noMatches = [];
     for (let i = 1; i < asRows.length; i++) {
       const row = asRows[i];
       const phone = (row[2] || '').trim();
@@ -1451,55 +1453,26 @@ app.get('/api/diagnose-phones', requireAuth, requireAdmin, async (req, res) => {
         e.tutor_name.toLowerCase() === tutor.toLowerCase() &&
         cleanStudentName(e.student_name).toLowerCase() === student.toLowerCase()
       );
-      if (!ce) { noMatch++; continue; }
+      if (!ce) {
+        noMatches.push({ row: i+1, tutor, student, phone, slot: (row[7]||'').trim(), date: (row[8]||'').trim(), time: (row[9]||'').trim(), age: (row[4]||'').trim(), language: (row[5]||'').trim() });
+        noMatch++;
+        continue;
+      }
       matched++;
       if ((ce.phone || '') === phone) { phoneMatch++; continue; }
       phoneDiff++;
-    }
-    // Also check Trial 2.0 direct for rows with phones in cache but phone missing
-    const trialRange = `'Trial 2.0'!A:R`;
-    const trialResult = await sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID,
-      range: trialRange,
-    });
-    const trialRows = trialResult.data.values || [];
-    let trialWithPhone = 0, trialTotal = 0;
-    for (let i = 0; i < trialRows.length; i++) {
-      if ((trialRows[i][8] || '').trim() && i + 1 >= 2) {
-        trialTotal++;
-        if ((trialRows[i][17] || '').trim()) trialWithPhone++;
-      }
-    }
-    // Find specifics
-    const diffs = [];
-    const noMatches = [];
-    for (let i = 1; i < asRows.length; i++) {
-      const row = asRows[i];
-      const phone = (row[2] || '').trim();
-      const tutor = (row[1] || '').trim();
-      const student = cleanStudentName(row[3] || '').trim();
-      if (!phone || !tutor || !student) continue;
-      const ce = sheetDataCache.find(e =>
-        e.tutor_name.toLowerCase() === tutor.toLowerCase() &&
-        cleanStudentName(e.student_name).toLowerCase() === student.toLowerCase()
-      );
-      if (!ce) {
-        noMatches.push({ row: i+1, tutor, student, phone });
-        continue;
-      }
-      if ((ce.phone || '') !== phone) {
-        diffs.push({ row: i+1, tutor, student, asPhone: phone, trialPhone: ce.phone || '', trialRow: ce.row });
-      }
+      diffs.push({ row: i+1, tutor, student, asPhone: phone, trialPhone: ce.phone || '', trialRow: ce.row });
     }
     res.json({
       assessmentRows: asRows.length - 1,
       hasPhone, noPhone, matched, phoneMatch, phoneDiff, noMatch,
-      trialTotal,
-      trialWithPhone,
-      trialNoPhone: trialTotal - trialWithPhone,
       diffs,
       noMatches,
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
