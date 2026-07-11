@@ -1228,7 +1228,7 @@ app.get('/api/debug/assessment-sheet', requireAuth, requireAdmin, async (req, re
     });
     const rows = result.data.values || [];
     const checks = [];
-    for (let i = 1; i < Math.min(rows.length, 30); i++) {
+    for (let i = 1; i < Math.min(rows.length, 408); i++) {
       const row = rows[i];
       const phone = (row[2] || '').trim();
       const sheetRow = (row[17] || '').trim();
@@ -1266,11 +1266,20 @@ app.get('/api/debug/assessment-sheet', requireAuth, requireAdmin, async (req, re
         writeTest = { assessmentRow: checks[0].assessmentRow, error: e.message };
       }
     }
+    const summary = { totalEmpty: 0, matchByName: 0, matchByRow: 0, wouldUpdate: 0 };
+    for (const c of checks) {
+      summary.totalEmpty++;
+      if (c.byName) summary.matchByName++;
+      if (c.byRow) summary.matchByRow++;
+      if (c.byName && c.byName.phone) summary.wouldUpdate++;
+      else if (c.byRow && c.byRow.phone) summary.wouldUpdate++;
+    }
     res.json({
       totalRows: rows.length,
       cacheSize: sheetDataCache.length,
       assessmentSheetTab,
-      checks,
+      checks: checks.slice(0, 30),
+      summary,
       cacheSample,
       writeTest,
     });
