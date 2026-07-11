@@ -1323,6 +1323,7 @@ async function backfillPhonesToTrialSheet() {
       matched++;
       const existing = (cacheEntry.phone || '').trim();
       if (existing === phone) continue;
+      if (existing) continue;
       try {
         await sheets.spreadsheets.values.update({
           spreadsheetId: SPREADSHEET_ID,
