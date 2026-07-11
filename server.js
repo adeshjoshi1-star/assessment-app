@@ -1120,20 +1120,49 @@ app.post('/api/sync-sheet', requireAuth, async (req, res) => {
 
 async function recoverUnlinkedAssessments() {
   console.log('Starting assessment recovery...');
-  const unlinked = db.prepare("SELECT id, tutor_name, student_name, slot, date, time FROM assessments WHERE sheet_row IS NULL AND tutor_name != '' AND student_name != '' AND slot != ''").all();
-  console.log(`Found ${unlinked.length} unlinked assessments to recover`);
   backfillAssessments();
-  const stillMissing = db.prepare("SELECT COUNT(*) as cnt FROM assessments WHERE sheet_row IS NULL AND tutor_name != '' AND student_name != '' AND slot != ''").get();
-  console.log(`After recovery: ${stillMissing.cnt} assessments still unlinked`);
+  const missing = db.prepare("SELECT id, tutor_name, student_name, slot, date, time, student_age, language, level, interest_level, phone FROM assessments WHERE sheet_row IS NULL AND tutor_name != '' AND student_name != '' AND slot != ''").all();
+  console.log(`After backfill: ${missing.length} assessments still unlinked, attempting sheet append`);
+  let appended = 0;
+  for (const a of missing) {
+    const newRow = await appendToSheet({
+      demo_status: 'Demo Done',
+      slot: a.slot, date: a.date, time: a.time,
+      tutor_name: a.tutor_name, student_name: a.student_name,
+      age: a.student_age, language: a.language, phone: a.phone,
+    });
+    if (newRow) {
+      db.prepare('UPDATE assessments SET sheet_row = ? WHERE id = ?').run(newRow, a.id);
+      db.prepare("INSERT INTO sheet_statuses (row_number, status, demo_status) VALUES (?, ?, ?) ON CONFLICT(row_number) DO UPDATE SET status = ?, demo_status = ?, updated_at = CURRENT_TIMESTAMP").run(newRow, 'Demo Done', 'Demo Done', 'Demo Done', 'Demo Done');
+      console.log(`Appended & linked assessment ${a.id} (${a.tutor_name}/${a.student_name}) → sheet row ${newRow}`);
+      appended++;
+    }
+  }
+  console.log(`Recovery complete: appended ${appended} new rows to Trial 2.0 sheet`);
 }
 
 app.post('/api/recover-assessments', requireAuth, requireAdmin, async (req, res) => {
   try {
     await syncSheet();
     backfillAssessments();
+    const missing = db.prepare("SELECT id, tutor_name, student_name, slot, date, time, student_age, language, level, interest_level, phone FROM assessments WHERE sheet_row IS NULL AND tutor_name != '' AND student_name != '' AND slot != ''").all();
+    let appended = 0;
+    for (const a of missing) {
+      const newRow = await appendToSheet({
+        demo_status: 'Demo Done',
+        slot: a.slot, date: a.date, time: a.time,
+        tutor_name: a.tutor_name, student_name: a.student_name,
+        age: a.student_age, language: a.language, phone: a.phone,
+      });
+      if (newRow) {
+        db.prepare('UPDATE assessments SET sheet_row = ? WHERE id = ?').run(newRow, a.id);
+        db.prepare("INSERT INTO sheet_statuses (row_number, status, demo_status) VALUES (?, ?, ?) ON CONFLICT(row_number) DO UPDATE SET status = ?, demo_status = ?, updated_at = CURRENT_TIMESTAMP").run(newRow, 'Demo Done', 'Demo Done', 'Demo Done', 'Demo Done');
+        appended++;
+      }
+    }
     const linked = db.prepare("SELECT COUNT(*) as cnt FROM assessments WHERE sheet_row IS NOT NULL").get().cnt;
     const unlinked = db.prepare("SELECT COUNT(*) as cnt FROM assessments WHERE sheet_row IS NULL AND tutor_name != '' AND student_name != '' AND slot != ''").get().cnt;
-    res.json({ success: true, totalLinked: linked, totalUnlinked: unlinked });
+    res.json({ success: true, totalLinked: linked, totalUnlinked: unlinked, appendedNew: appended, skipped: missing.length - appended });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -1144,12 +1173,14 @@ app.get('/api/sync-health', requireAuth, (req, res) => {
   const totalAssessments = db.prepare('SELECT COUNT(*) as cnt FROM assessments').get().cnt;
   const linked = db.prepare("SELECT COUNT(*) as cnt FROM assessments WHERE sheet_row IS NOT NULL").get().cnt;
   const unlinked = db.prepare("SELECT COUNT(*) as cnt FROM assessments WHERE sheet_row IS NULL AND tutor_name != '' AND student_name != '' AND slot != ''").get().cnt;
+  const demoDone = db.prepare("SELECT COUNT(*) as cnt FROM assessments WHERE sheet_row IS NOT NULL").get().cnt;
   res.json({
     totalAssessments,
     linkedToSheet: linked,
-    unlinked: unlinked,
+    unlinked,
     sheetCacheSize: sheetDataCache.length,
     lastSync,
+    demoDoneInSheet: demoDone,
   });
 });
 
