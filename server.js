@@ -1186,13 +1186,17 @@ async function backfillAssessmentSheetPhones() {
         }
         if (entry && entry.phone) {
           foundPhone++;
-          await sheets.spreadsheets.values.update({
-            spreadsheetId: ASSESSMENTS_SHEET_ID,
-            range: `'${assessmentSheetTab}'!C${i + 1}`,
-            valueInputOption: 'USER_ENTERED',
-            requestBody: { values: [[entry.phone]] },
-          });
-          updated++;
+          try {
+            await sheets.spreadsheets.values.update({
+              spreadsheetId: ASSESSMENTS_SHEET_ID,
+              range: `'${assessmentSheetTab}'!C${i + 1}`,
+              valueInputOption: 'USER_ENTERED',
+              requestBody: { values: [[entry.phone]] },
+            });
+            updated++;
+          } catch (updateErr) {
+            console.error(`Failed to update Assessment Sheet row ${i + 1}: ${updateErr.message}`);
+          }
         }
       }
     }
