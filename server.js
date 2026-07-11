@@ -1294,6 +1294,105 @@ async function backfillAssessmentFeedbackToTrialSheet() {
   }
 }
 
+async function backfillPhonesToTrialSheet() {
+  try {
+    const sheets = getSheetsClient();
+    const range = `'${assessmentSheetTab}'!A:R`;
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: ASSESSMENTS_SHEET_ID,
+      range,
+    });
+    const rows = res.data.values || [];
+    if (rows.length < 2) { console.log('Assessment sheet has no data rows'); return 0; }
+    let updated = 0;
+    let checked = 0;
+    let matched = 0;
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      const phone = (row[2] || '').trim();
+      if (!phone) continue;
+      const tutor = (row[1] || '').trim();
+      const student = cleanStudentName(row[3] || '').trim();
+      if (!tutor || !student) continue;
+      checked++;
+      const cacheEntry = sheetDataCache.find(e =>
+        e.tutor_name.toLowerCase() === tutor.toLowerCase() &&
+        cleanStudentName(e.student_name).toLowerCase() === student.toLowerCase()
+      );
+      if (!cacheEntry) continue;
+      matched++;
+      const existing = (cacheEntry.phone || '').trim();
+      if (existing === phone) continue;
+      try {
+        await sheets.spreadsheets.values.update({
+          spreadsheetId: SPREADSHEET_ID,
+          range: `'Trial 2.0'!R${cacheEntry.row}`,
+          valueInputOption: 'USER_ENTERED',
+          requestBody: { values: [[phone]] },
+        });
+        cacheEntry.phone = phone;
+        updated++;
+      } catch (e) {
+        console.error(`Failed updating Trial 2.0 row ${cacheEntry.row} phone:`, e.message);
+      }
+    }
+    console.log(`Phone push to Trial 2.0: checked=${checked}, matched=${matched}, updated=${updated}`);
+    return updated;
+  } catch (err) {
+    console.error('Phone push to Trial 2.0 error:', err.message);
+    return -1;
+  }
+}
+
+app.post('/api/backfill-phones-to-trial', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const count = await backfillPhonesToTrialSheet();
+    res.json({ success: true, phonePush: count });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/search-phone/:phone', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const sheets = getSheetsClient();
+    const target = req.params.phone;
+    const range = `'${assessmentSheetTab}'!A:R`;
+    const result = await sheets.spreadsheets.values.get({
+      spreadsheetId: ASSESSMENTS_SHEET_ID,
+      range,
+    });
+    const rows = result.data.values || [];
+    const found = [];
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      const phone = (row[2] || '').trim();
+      if (phone.includes(target)) {
+        const tutor = (row[1] || '').trim();
+        const student = (row[3] || '').trim();
+        const sheetRow = (row[17] || '').trim();
+        const cacheEntry = sheetDataCache.find(e =>
+          e.tutor_name.toLowerCase() === tutor.toLowerCase() &&
+          cleanStudentName(e.student_name).toLowerCase() === cleanStudentName(student).toLowerCase()
+        );
+        found.push({
+          assessmentRow: i + 1,
+          tutor, student, phone,
+          sheetRow,
+          trialRow: cacheEntry ? cacheEntry.row : null,
+          trialPhone: cacheEntry ? (cacheEntry.phone || '') : null,
+          inTrialCache: !!cacheEntry,
+        });
+      }
+    }
+    res.json({ searchPhone: target, found: found.length, results: found });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/clear-trial-feedback', requireAuth, requireAdmin, async (req, res) => {
   try {
     const sheets = getSheetsClient();
@@ -1485,9 +1584,10 @@ app.post('/api/recover-assessments', requireAuth, requireAdmin, async (req, res)
     }
     const phoneResult = await backfillAssessmentSheetPhones();
     const trialFeedbackResult = await backfillAssessmentFeedbackToTrialSheet();
+    const phonePushResult = await backfillPhonesToTrialSheet();
     const linked = db.prepare("SELECT COUNT(*) as cnt FROM assessments WHERE sheet_row IS NOT NULL").get().cnt;
     const unlinked = db.prepare("SELECT COUNT(*) as cnt FROM assessments WHERE sheet_row IS NULL AND tutor_name != '' AND student_name != '' AND slot != ''").get().cnt;
-    res.json({ success: true, totalLinked: linked, totalUnlinked: unlinked, appendedNew: appended, skipped: missing.length - appended, phoneBackfill: phoneResult, trialFeedbackBackfill: trialFeedbackResult });
+    res.json({ success: true, totalLinked: linked, totalUnlinked: unlinked, appendedNew: appended, skipped: missing.length - appended, phoneBackfill: phoneResult, trialFeedbackBackfill: trialFeedbackResult, phonePushToTrial: phonePushResult });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
