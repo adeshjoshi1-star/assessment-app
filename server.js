@@ -494,22 +494,26 @@ app.post('/api/assessments', async (req, res) => {
       feedback, interest_level || 0, additional_remarks || '', date || '', time || '',
       resolvedSheetRow
     );
-    if (resolvedSheetRow) {
-      updateSheetRow(resolvedSheetRow, 'Demo Done');
-      db.prepare("INSERT INTO sheet_statuses (row_number, status, demo_status) VALUES (?, ?, ?) ON CONFLICT(row_number) DO UPDATE SET status = ?, demo_status = ?, updated_at = CURRENT_TIMESTAMP").run(resolvedSheetRow, 'Demo Done', 'Demo Done', 'Demo Done', 'Demo Done');
-      const entry = sheetDataCache.find(e => e.row === resolvedSheetRow);
+    let trialRow = resolvedSheetRow;
+    if (trialRow) {
+      updateSheetRow(trialRow, 'Demo Done');
+      db.prepare("INSERT INTO sheet_statuses (row_number, status, demo_status) VALUES (?, ?, ?) ON CONFLICT(row_number) DO UPDATE SET status = ?, demo_status = ?, updated_at = CURRENT_TIMESTAMP").run(trialRow, 'Demo Done', 'Demo Done', 'Demo Done', 'Demo Done');
+      const entry = sheetDataCache.find(e => e.row === trialRow);
       if (entry) { entry.status = 'Demo Done'; entry.demo_status = 'Demo Done'; }
-      db.prepare('UPDATE assessments SET sheet_row = ? WHERE id = ?').run(resolvedSheetRow, result.lastInsertRowid);
+      db.prepare('UPDATE assessments SET sheet_row = ? WHERE id = ?').run(trialRow, result.lastInsertRowid);
     } else {
-      const newRow = await appendToSheet({
+      trialRow = await appendToSheet({
         demo_status: 'Demo Done',
         slot, date, time, tutor_name, student_name,
         age: student_age, language, phone: resolvedPhone,
       });
-      if (newRow) {
-        db.prepare('UPDATE assessments SET sheet_row = ? WHERE id = ?').run(newRow, result.lastInsertRowid);
-        db.prepare("INSERT INTO sheet_statuses (row_number, status, demo_status) VALUES (?, ?, ?) ON CONFLICT(row_number) DO UPDATE SET status = ?, demo_status = ?, updated_at = CURRENT_TIMESTAMP").run(newRow, 'Demo Done', 'Demo Done', 'Demo Done', 'Demo Done');
+      if (trialRow) {
+        db.prepare('UPDATE assessments SET sheet_row = ? WHERE id = ?').run(trialRow, result.lastInsertRowid);
+        db.prepare("INSERT INTO sheet_statuses (row_number, status, demo_status) VALUES (?, ?, ?) ON CONFLICT(row_number) DO UPDATE SET status = ?, demo_status = ?, updated_at = CURRENT_TIMESTAMP").run(trialRow, 'Demo Done', 'Demo Done', 'Demo Done', 'Demo Done');
       }
+    }
+    if (trialRow) {
+      writeAssessmentFeedbackToTrialSheet(trialRow, { feedback, topics_known, topics_covered, start_topic, additional_remarks });
     }
     appendAssessmentToSheet({
       tutor_name, phone: resolvedPhone, slot, student_name,
@@ -767,6 +771,22 @@ async function appendAssessmentToSheet(data) {
     console.log('Assessment appended to sheet for', data.student_name);
   } catch (err) {
     console.error('Assessment sheet append error:', err.message);
+  }
+}
+
+async function writeAssessmentFeedbackToTrialSheet(row, data) {
+  if (!row) return;
+  try {
+    const sheets = getSheetsClient();
+    const vals = [[data.feedback || '', (data.topics_known || []).join(', '), (data.topics_covered || []).join(', '), data.start_topic || '', data.additional_remarks || '']];
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `'Trial 2.0'!T${row}:X${row}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: vals },
+    });
+  } catch (err) {
+    console.error(`Failed writing feedback to Trial 2.0 row ${row}:`, err.message);
   }
 }
 
@@ -1224,6 +1244,57 @@ app.post('/api/backfill-phones', requireAuth, requireAdmin, async (req, res) => 
   }
 });
 
+async function backfillAssessmentFeedbackToTrialSheet() {
+  try {
+    const sheets = getSheetsClient();
+    const range = `'${assessmentSheetTab}'!A:X`;
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: ASSESSMENTS_SHEET_ID,
+      range,
+    });
+    const rows = res.data.values || [];
+    if (rows.length < 2) { console.log('Assessment sheet has no data rows'); return 0; }
+    let written = 0;
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      const sheetRow = (row[17] || '').trim();
+      if (!sheetRow) continue;
+      const feedback = (row[11] || '').trim();
+      const topicsKnown = (row[12] || '').trim();
+      const topicsCovered = (row[13] || '').trim();
+      const startTopic = (row[14] || '').trim();
+      const additionalRemarks = (row[16] || '').trim();
+      if (!feedback && !topicsKnown && !topicsCovered && !startTopic && !additionalRemarks) continue;
+      try {
+        await sheets.spreadsheets.values.update({
+          spreadsheetId: SPREADSHEET_ID,
+          range: `'Trial 2.0'!T${sheetRow}:X${sheetRow}`,
+          valueInputOption: 'USER_ENTERED',
+          requestBody: { values: [[feedback, topicsKnown, topicsCovered, startTopic, additionalRemarks]] },
+        });
+        written++;
+      } catch (e) {
+        console.error(`Failed writing to Trial 2.0 row ${sheetRow}:`, e.message);
+      }
+    }
+    if (written > 0) console.log(`Backfilled ${written} rows from Assessment Sheet to Trial 2.0 (T-X)`);
+    return written;
+  } catch (err) {
+    console.error('Assessment feedback backfill error:', err.message);
+    return -1;
+  }
+}
+
+app.post('/api/backfill-trial-sheet', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const count = await backfillAssessmentFeedbackToTrialSheet();
+    res.json({ success: true, backfilled: count });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/debug/assessment-sheet', requireAuth, requireAdmin, async (req, res) => {
   try {
     const sheets = getSheetsClient();
@@ -1313,9 +1384,10 @@ app.post('/api/recover-assessments', requireAuth, requireAdmin, async (req, res)
       }
     }
     const phoneResult = await backfillAssessmentSheetPhones();
+    const trialFeedbackResult = await backfillAssessmentFeedbackToTrialSheet();
     const linked = db.prepare("SELECT COUNT(*) as cnt FROM assessments WHERE sheet_row IS NOT NULL").get().cnt;
     const unlinked = db.prepare("SELECT COUNT(*) as cnt FROM assessments WHERE sheet_row IS NULL AND tutor_name != '' AND student_name != '' AND slot != ''").get().cnt;
-    res.json({ success: true, totalLinked: linked, totalUnlinked: unlinked, appendedNew: appended, skipped: missing.length - appended, phoneBackfill: phoneResult });
+    res.json({ success: true, totalLinked: linked, totalUnlinked: unlinked, appendedNew: appended, skipped: missing.length - appended, phoneBackfill: phoneResult, trialFeedbackBackfill: trialFeedbackResult });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
