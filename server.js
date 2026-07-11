@@ -998,7 +998,8 @@ app.get('/api/sheet-tutor/:name', (req, res) => {
       return words.some(w => w.length > 1 && sn.includes(w));
     });
   }
-  res.json(entries.sort((a, b) => b.row - a.row));
+  const safe = entries.map(({ phone, ...rest }) => rest);
+  res.json(safe.sort((a, b) => b.row - a.row));
 });
 
 app.get('/api/demo-completion', requireAuth, (req, res) => {
