@@ -1163,6 +1163,10 @@ async function backfillAssessmentSheetPhones() {
     const rows = res.data.values || [];
     if (rows.length < 2) { console.log('Assessment sheet has no data rows'); return 0; }
     let updated = 0;
+    let checked = 0;
+    let foundByRow = 0;
+    let foundByName = 0;
+    let foundPhone = 0;
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
       const phone = (row[2] || '').trim();
@@ -1170,14 +1174,18 @@ async function backfillAssessmentSheetPhones() {
       const tutorName = (row[1] || '').trim().toLowerCase();
       const studentName = (row[3] || '').trim().toLowerCase();
       if (!phone) {
+        checked++;
         let entry = null;
         if (sheetRow) {
           entry = sheetDataCache.find(e => String(e.row) === sheetRow);
+          if (entry) foundByRow++;
         }
         if (!entry && tutorName && studentName) {
           entry = sheetDataCache.find(e => e.tutor_name.toLowerCase() === tutorName && e.student_name.toLowerCase() === studentName);
+          if (entry) foundByName++;
         }
         if (entry && entry.phone) {
+          foundPhone++;
           await sheets.spreadsheets.values.update({
             spreadsheetId: ASSESSMENTS_SHEET_ID,
             range: `'${assessmentSheetTab}'!C${i + 1}`,
@@ -1188,6 +1196,7 @@ async function backfillAssessmentSheetPhones() {
         }
       }
     }
+    console.log(`Phone backfill: checked=${checked} emptyPhone rows, foundByRow=${foundByRow}, foundByName=${foundByName}, foundPhone=${foundPhone}, updated=${updated}`);
     if (updated > 0) {
       console.log(`Backfilled ${updated} phone numbers in Assessment Sheet (tab: ${assessmentSheetTab})`);
     } else {
@@ -1213,21 +1222,40 @@ app.post('/api/backfill-phones', requireAuth, requireAdmin, async (req, res) => 
 app.get('/api/debug/assessment-sheet', requireAuth, requireAdmin, async (req, res) => {
   try {
     const sheets = getSheetsClient();
-    const range = `'${assessmentSheetTab}'!A:R`;
     const result = await sheets.spreadsheets.values.get({
       spreadsheetId: ASSESSMENTS_SHEET_ID,
-      range,
+      range: `'${assessmentSheetTab}'!A:R`,
     });
     const rows = result.data.values || [];
     const emptyPhone = [];
-    for (let i = 1; i < Math.min(rows.length, 100); i++) {
+    const checks = [];
+    for (let i = 1; i < Math.min(rows.length, 30); i++) {
       const row = rows[i];
       const phone = (row[2] || '').trim();
+      const sheetRow = (row[17] || '').trim();
+      const tutor = (row[1] || '').trim();
+      const student = (row[3] || '').trim();
       if (!phone) {
-        emptyPhone.push({ row: i + 1, tutor: row[1] || '', student: row[3] || '', sheetRow: row[17] || '' });
+        let byRow = null;
+        let byName = null;
+        if (sheetRow) {
+          const sr = sheetDataCache.find(e => String(e.row) === sheetRow);
+          if (sr) byRow = { phone: sr.phone, tutor_co: sr.tutor_name, student_co: sr.student_name };
+        }
+        if (tutor && student) {
+          const sn = sheetDataCache.find(e => e.tutor_name.toLowerCase() === tutor.toLowerCase() && e.student_name.toLowerCase() === student.toLowerCase());
+          if (sn) byName = { phone: sn.phone, row_co: sn.row, tutor_co: sn.tutor_name, student_co: sn.student_name };
+        }
+        checks.push({ assessmentRow: i + 1, tutor, student, sheetRow, byRow, byName });
       }
     }
-    res.json({ totalRows: rows.length, emptyPhoneCount: emptyPhone.length, sample: emptyPhone.slice(0, 20) });
+    res.json({
+      totalRows: rows.length,
+      emptyPhoneCount: emptyPhone.length,
+      cacheSize: sheetDataCache.length,
+      assessmentSheetTab,
+      checks,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
