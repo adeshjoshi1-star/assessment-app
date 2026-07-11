@@ -476,18 +476,20 @@ app.post('/api/assessments', async (req, res) => {
     const stmt = db.prepare(`INSERT INTO assessments
       (user_id, tutor_name, phone, slot, student_name, student_age, language, level, topics_known, topics_covered, start_topic, revision_topics, feedback, interest_level, additional_remarks, date, time, sheet_row)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const sheetRowValue = (sheet_row !== undefined && sheet_row !== null && sheet_row !== '') ? parseInt(sheet_row) : null;
     const result = stmt.run(
       req.session.userId, tutor_name || '', phone || '', slot || '', student_name || '', student_age || '', language || '', level || '',
       JSON.stringify(topics_known || []), JSON.stringify(topics_covered || []),
       start_topic || '', JSON.stringify(revision_topics || []),
       feedback, interest_level || 0, additional_remarks || '', date || '', time || '',
-      sheet_row || null
+      sheetRowValue
     );
-    if (sheet_row) {
-      updateSheetRow(sheet_row, 'Demo Done');
-      db.prepare("INSERT INTO sheet_statuses (row_number, status, demo_status) VALUES (?, ?, ?) ON CONFLICT(row_number) DO UPDATE SET status = ?, demo_status = ?, updated_at = CURRENT_TIMESTAMP").run(sheet_row, 'Demo Done', 'Demo Done', 'Demo Done', 'Demo Done');
-      const entry = sheetDataCache.find(e => e.row === parseInt(sheet_row));
+    if (sheetRowValue) {
+      updateSheetRow(sheetRowValue, 'Demo Done');
+      db.prepare("INSERT INTO sheet_statuses (row_number, status, demo_status) VALUES (?, ?, ?) ON CONFLICT(row_number) DO UPDATE SET status = ?, demo_status = ?, updated_at = CURRENT_TIMESTAMP").run(sheetRowValue, 'Demo Done', 'Demo Done', 'Demo Done', 'Demo Done');
+      const entry = sheetDataCache.find(e => e.row === sheetRowValue);
       if (entry) { entry.status = 'Demo Done'; entry.demo_status = 'Demo Done'; }
+      db.prepare('UPDATE assessments SET sheet_row = ? WHERE id = ?').run(sheetRowValue, result.lastInsertRowid);
     } else {
       const newRow = await appendToSheet({
         demo_status: 'Demo Done',
@@ -495,7 +497,6 @@ app.post('/api/assessments', async (req, res) => {
         age: student_age, language, phone,
       });
       if (newRow) {
-        sheet_row = newRow;
         db.prepare('UPDATE assessments SET sheet_row = ? WHERE id = ?').run(newRow, result.lastInsertRowid);
         db.prepare("INSERT INTO sheet_statuses (row_number, status, demo_status) VALUES (?, ?, ?) ON CONFLICT(row_number) DO UPDATE SET status = ?, demo_status = ?, updated_at = CURRENT_TIMESTAMP").run(newRow, 'Demo Done', 'Demo Done', 'Demo Done', 'Demo Done');
       }
@@ -505,7 +506,7 @@ app.post('/api/assessments', async (req, res) => {
       student_age, language, level,
       topics_known, topics_covered, start_topic,
       revision_topics, feedback, interest_level,
-      additional_remarks, date, time, sheet_row: sheet_row,
+      additional_remarks, date, time, sheet_row: sheetRowValue,
     });
     res.json({ success: true });
   } catch (err) {
@@ -518,9 +519,9 @@ app.get('/api/assessments', requireAuth, (req, res) => {
   const { tutor } = req.query;
   let list;
   if (tutor) {
-    list = db.prepare("SELECT id, tutor_name, phone, slot, student_name, student_age, language, level, interest_level, status, date, time, created_at FROM assessments WHERE tutor_name = ? ORDER BY created_at DESC").all(tutor);
+    list = db.prepare("SELECT id, tutor_name, phone, slot, student_name, student_age, language, level, interest_level, status, date, time, sheet_row, created_at FROM assessments WHERE tutor_name = ? ORDER BY created_at DESC").all(tutor);
   } else {
-    list = db.prepare("SELECT id, tutor_name, phone, slot, student_name, student_age, language, level, interest_level, status, date, time, created_at FROM assessments ORDER BY created_at DESC").all();
+    list = db.prepare("SELECT id, tutor_name, phone, slot, student_name, student_age, language, level, interest_level, status, date, time, sheet_row, created_at FROM assessments ORDER BY created_at DESC").all();
   }
   res.json(list);
 });
@@ -640,6 +641,7 @@ function getSheetsClient() {
 }
 
 async function updateSheetRow(row, status) {
+  if (!row) { console.error('updateSheetRow called with invalid row:', row); return; }
   try {
     const sheets = getSheetsClient();
     await sheets.spreadsheets.values.update({
@@ -648,8 +650,9 @@ async function updateSheetRow(row, status) {
       valueInputOption: 'USER_ENTERED',
       requestBody: { values: [[status]] },
     });
+    console.log(`Sheet row ${row} updated to "${status}"`);
   } catch (err) {
-    console.error('Sheet update error:', err.message);
+    console.error(`Sheet update error for row ${row}:`, err.message);
   }
 }
 
@@ -681,7 +684,13 @@ async function appendToSheet(data) {
     });
     const range = res.data?.updates?.updatedRange || '';
     const m = range.match(/R(\d+)$/);
-    return m ? parseInt(m[1]) : null;
+    const row = m ? parseInt(m[1]) : null;
+    if (row) {
+      console.log(`Appended row ${row} to Trial 2.0 sheet for ${data.tutor_name}/${data.student_name}`);
+    } else {
+      console.warn('Sheet append completed but could not parse row number from range:', range);
+    }
+    return row;
   } catch (err) {
     console.error('Sheet append error:', err.message);
     return null;
@@ -851,9 +860,16 @@ async function syncSheet() {
 
 function normalizeDate(d) {
   if (!d) return '';
-  const m = d.match(/^(\d{1,2})[\/.](\d{1,2})[\/.](\d{2,4})$/);
+  const m = d.match(/^(\d{1,4})[\/.\-](\d{1,2})[\/.\-](\d{1,4})$/);
   if (m) {
-    let dd = m[1].padStart(2, '0'), mm = m[2].padStart(2, '0'), yy = m[3];
+    let a = m[1], b = m[2], c = m[3];
+    if (a.length === 4) {
+      return `${a}-${b.padStart(2, '0')}-${c.padStart(2, '0')}`;
+    }
+    if (c.length === 4) {
+      return `${c}-${b.padStart(2, '0')}-${a.padStart(2, '0')}`;
+    }
+    let dd = a.padStart(2, '0'), mm = b.padStart(2, '0'), yy = c;
     if (yy.length === 2) yy = '20' + yy;
     return `${yy}-${mm}-${dd}`;
   }
@@ -881,60 +897,68 @@ function fixExistingMismatches() {
   if (fixed > 0) console.log(`Fixed ${fixed} already-linked assessments with wrong sheet status`);
 }
 
+function cleanStudentName(name) {
+  return (name || '').replace(/\s*\(.*?\)\s*/g, '').replace(/\s*\[.*?\]\s*/g, '').trim();
+}
+
 function backfillAssessments() {
-  const assessments = db.prepare('SELECT * FROM assessments WHERE sheet_row IS NOT NULL').all();
-  let cleared = 0;
-  for (const a of assessments) {
-    const entry = sheetDataCache.find(e => e.row === a.sheet_row);
-    if (!entry) {
-      db.prepare('UPDATE assessments SET sheet_row = NULL WHERE id = ?').run(a.id);
-      cleared++;
-    } else if (
-      entry.tutor_name && a.tutor_name &&
-      entry.tutor_name.toLowerCase() === a.tutor_name.toLowerCase() &&
-      entry.student_name && a.student_name &&
-      entry.student_name.toLowerCase() === a.student_name.toLowerCase() &&
-      entry.slot && a.slot && entry.slot === a.slot &&
-      entry.date && a.date && normalizeDate(entry.date) === normalizeDate(a.date) &&
-      entry.time && a.time && entry.time.toLowerCase().replace(/\s+/g, '') === a.time.toLowerCase().replace(/\s+/g, '')
-    ) {
-      // valid match, keep it
-    } else {
-      db.prepare('UPDATE assessments SET sheet_row = NULL WHERE id = ?').run(a.id);
-      cleared++;
-    }
-  }
-  if (cleared > 0) console.log(`Cleared ${cleared} incorrect sheet_row values`);
-  const unlinked = db.prepare('SELECT * FROM assessments WHERE sheet_row IS NULL').all();
+  const allTeachers = db.prepare("SELECT id, name, code FROM users WHERE role = 'teacher' AND code IS NOT NULL AND code != ''").all();
+  const knownTutorNames = new Set(allTeachers.map(t => t.name.trim().toLowerCase()));
+
+  const existingLinks = db.prepare('SELECT sheet_row, count(*) as cnt FROM assessments WHERE sheet_row IS NOT NULL GROUP BY sheet_row HAVING cnt > 0').all();
+  const usedSheetRows = new Set(existingLinks.map(r => r.sheet_row));
+
+  const unlinked = db.prepare("SELECT * FROM assessments WHERE sheet_row IS NULL AND tutor_name != '' AND student_name != '' AND slot != ''").all();
   let linked = 0;
   for (const a of unlinked) {
-    const entry = sheetDataCache.find(e => {
-      if (!e.tutor_name || !a.tutor_name) return false;
-      if (e.tutor_name.toLowerCase() !== a.tutor_name.toLowerCase()) return false;
-      if (!e.student_name || !a.student_name) return false;
-      if (e.student_name.toLowerCase() !== a.student_name.toLowerCase()) return false;
-      if (!e.slot || !a.slot) return false;
+    if (!a.tutor_name || !a.student_name || !a.slot) continue;
+    const aTutor = a.tutor_name.trim().toLowerCase();
+    const aStudent = cleanStudentName(a.student_name).toLowerCase();
+
+    const candidates = sheetDataCache.filter(e => {
+      if (!e.tutor_name || !e.student_name || !e.slot) return false;
+      if (e.tutor_name.toLowerCase() !== aTutor) return false;
+      if (usedSheetRows.has(e.row)) return false;
+      const eStudent = cleanStudentName(e.student_name).toLowerCase();
+      if (eStudent !== aStudent && !aStudent.startsWith(eStudent) && !eStudent.startsWith(aStudent)) return false;
       if (e.slot !== a.slot) return false;
-      if (!e.date || !a.date) return false;
-      if (normalizeDate(e.date) !== normalizeDate(a.date)) return false;
-      if (!e.time || !a.time) return false;
-      if (e.time.toLowerCase().replace(/\s+/g, '') !== a.time.toLowerCase().replace(/\s+/g, '')) return false;
       return true;
     });
-      if (entry) {
-      db.prepare('UPDATE assessments SET sheet_row = ? WHERE id = ?').run(entry.row, a.id);
-      if (entry.demo_status === 'New') {
-        updateSheetRow(entry.row, 'Demo Done');
-        entry.demo_status = 'Demo Done';
-        db.prepare("INSERT INTO sheet_statuses (row_number, status, demo_status) VALUES (?, ?, ?) ON CONFLICT(row_number) DO UPDATE SET demo_status = ?, updated_at = CURRENT_TIMESTAMP").run(entry.row, 'New', 'Demo Done', 'Demo Done');
+
+    if (candidates.length === 0) continue;
+
+    let pick = null;
+    if (candidates.length === 1) {
+      pick = candidates[0];
+    } else {
+      const aDateNorm = normalizeDate(a.date || '');
+      const aTimeNorm = (a.time || '').toLowerCase().replace(/\s+/g, '');
+      for (const c of candidates) {
+        const cDateNorm = normalizeDate(c.date || '');
+        const cTimeNorm = (c.time || '').toLowerCase().replace(/\s+/g, '');
+        if (cDateNorm && aDateNorm && cDateNorm === aDateNorm && cTimeNorm && aTimeNorm && cTimeNorm === aTimeNorm) {
+          pick = c;
+          break;
+        }
       }
+      if (!pick) pick = candidates[0];
+    }
+
+    if (pick) {
+      db.prepare('UPDATE assessments SET sheet_row = ? WHERE id = ?').run(pick.row, a.id);
+      db.prepare("INSERT INTO sheet_statuses (row_number, status, demo_status) VALUES (?, ?, ?) ON CONFLICT(row_number) DO UPDATE SET status = ?, demo_status = ?, updated_at = CURRENT_TIMESTAMP").run(pick.row, 'New', 'Demo Done', 'Demo Done', 'Demo Done');
+      updateSheetRow(pick.row, 'Demo Done');
+      if (pick.demo_status === 'New' || pick.demo_status === 'Assessment Pending') {
+        pick.demo_status = 'Demo Done';
+      }
+      usedSheetRows.add(pick.row);
       linked++;
     }
   }
-  if (linked > 0) console.log(`Linked ${linked} assessments by all-field match`);
-  const stillMissing = db.prepare("SELECT id, tutor_name, student_name, slot, date, time FROM assessments WHERE sheet_row IS NULL").all();
+  if (linked > 0) console.log(`Backfill: linked ${linked} assessments to sheet rows`);
+  const stillMissing = db.prepare("SELECT id, tutor_name, student_name, slot, date, time FROM assessments WHERE sheet_row IS NULL AND tutor_name != '' AND student_name != '' AND slot != ''").all();
   if (stillMissing.length > 0) {
-    console.log(`Still ${stillMissing.length} assessments without sheet_row:`, stillMissing.map(a => `${a.tutor_name}/${a.student_name}`).join(', '));
+    console.log(`Backfill: ${stillMissing.length} assessments still unmatched:`, stillMissing.map(a => `${a.tutor_name}/${a.student_name}/${a.slot}`).join(', '));
   }
 }
 
@@ -1094,6 +1118,41 @@ app.post('/api/sync-sheet', requireAuth, async (req, res) => {
   res.json({ success: true, count: sheetDataCache.length, lastSync });
 });
 
+async function recoverUnlinkedAssessments() {
+  console.log('Starting assessment recovery...');
+  const unlinked = db.prepare("SELECT id, tutor_name, student_name, slot, date, time FROM assessments WHERE sheet_row IS NULL AND tutor_name != '' AND student_name != '' AND slot != ''").all();
+  console.log(`Found ${unlinked.length} unlinked assessments to recover`);
+  backfillAssessments();
+  const stillMissing = db.prepare("SELECT COUNT(*) as cnt FROM assessments WHERE sheet_row IS NULL AND tutor_name != '' AND student_name != '' AND slot != ''").get();
+  console.log(`After recovery: ${stillMissing.cnt} assessments still unlinked`);
+}
+
+app.post('/api/recover-assessments', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    await syncSheet();
+    backfillAssessments();
+    const linked = db.prepare("SELECT COUNT(*) as cnt FROM assessments WHERE sheet_row IS NOT NULL").get().cnt;
+    const unlinked = db.prepare("SELECT COUNT(*) as cnt FROM assessments WHERE sheet_row IS NULL AND tutor_name != '' AND student_name != '' AND slot != ''").get().cnt;
+    res.json({ success: true, totalLinked: linked, totalUnlinked: unlinked });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/sync-health', requireAuth, (req, res) => {
+  const totalAssessments = db.prepare('SELECT COUNT(*) as cnt FROM assessments').get().cnt;
+  const linked = db.prepare("SELECT COUNT(*) as cnt FROM assessments WHERE sheet_row IS NOT NULL").get().cnt;
+  const unlinked = db.prepare("SELECT COUNT(*) as cnt FROM assessments WHERE sheet_row IS NULL AND tutor_name != '' AND student_name != '' AND slot != ''").get().cnt;
+  res.json({
+    totalAssessments,
+    linkedToSheet: linked,
+    unlinked: unlinked,
+    sheetCacheSize: sheetDataCache.length,
+    lastSync,
+  });
+});
+
 syncSheet();
 initAssessmentSheet();
 syncTutorCodesToSheet();
@@ -1108,6 +1167,7 @@ setTimeout(() => {
 setTimeout(syncSheet, 5000);
 setTimeout(syncSheet, 15000);
 setTimeout(syncTutorCodesToSheet, 10000);
+setTimeout(recoverUnlinkedAssessments, 25000);
 const SYNC_INTERVAL = 30000;
 setInterval(syncSheet, SYNC_INTERVAL);
 setInterval(syncTutorCodesToSheet, 60000);
