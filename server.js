@@ -1248,6 +1248,8 @@ app.get('/api/debug/assessment-sheet', requireAuth, requireAdmin, async (req, re
         checks.push({ assessmentRow: i + 1, tutor, student, sheetRow, byRow, byName });
       }
     }
+    // Check if specific names exist in cache
+    const cacheSample = sheetDataCache.filter(e => ['afreen tabassum', 'aleena', 'thanseeha'].includes(e.tutor_name.toLowerCase())).slice(0, 5).map(e => ({ row: e.row, tutor: e.tutor_name, student: e.student_name, phone: e.phone }));
     // Quick write test — update first match
     let writeTest = null;
     if (checks.length > 0 && checks[0].byName) {
@@ -1269,6 +1271,7 @@ app.get('/api/debug/assessment-sheet', requireAuth, requireAdmin, async (req, re
       cacheSize: sheetDataCache.length,
       assessmentSheetTab,
       checks,
+      cacheSample,
       writeTest,
     });
   } catch (err) {
