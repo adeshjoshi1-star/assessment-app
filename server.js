@@ -1473,10 +1473,6 @@ app.get('/api/diagnose-phones', requireAuth, requireAdmin, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 app.post('/api/clear-trial-feedback', requireAuth, requireAdmin, async (req, res) => {
   try {
