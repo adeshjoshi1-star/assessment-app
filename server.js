@@ -1398,16 +1398,29 @@ app.get('/api/check-trial-row/:row', requireAuth, requireAdmin, async (req, res)
   try {
     const sheets = getSheetsClient();
     const rowNum = parseInt(req.params.row);
+    // Read single row with explicit range
     const result = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
       range: `'Trial 2.0'!A${rowNum}:R${rowNum}`,
     });
     const row = result.data.values ? result.data.values[0] : [];
+    // Read via A:R to compare
+    const allResult = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `'Trial 2.0'!A:R`,
+    });
+    const allRows = allResult.data.values || [];
+    const allRow = allRows[rowNum - 1] || [];
     res.json({
       trialRow: rowNum,
       columns: ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R'],
-      values: row,
-      phoneColumnR: row[17] || '',
+      valuesExplicitRange: row,
+      phoneExplicit: row[17] || '',
+      valuesAllRange: allRow,
+      phoneAllRange: allRow[17] || '',
+      explicitLength: row.length,
+      allRangeLength: allRow.length,
+      allRowsTotal: allRows.length,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
