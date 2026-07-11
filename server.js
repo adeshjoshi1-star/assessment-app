@@ -1244,6 +1244,10 @@ app.post('/api/backfill-phones', requireAuth, requireAdmin, async (req, res) => 
   }
 });
 
+function cleanStudentName(name) {
+  return (name || '').replace(/\s*\(.*?\)\s*/g, '').trim();
+}
+
 async function backfillAssessmentFeedbackToTrialSheet() {
   try {
     const sheets = getSheetsClient();
@@ -1255,29 +1259,38 @@ async function backfillAssessmentFeedbackToTrialSheet() {
     const rows = res.data.values || [];
     if (rows.length < 2) { console.log('Assessment sheet has no data rows'); return 0; }
     let written = 0;
+    let skipped = 0;
+    let matched = 0;
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
-      const sheetRow = (row[17] || '').trim();
-      if (!sheetRow) continue;
+      const tutor = (row[1] || '').trim();
+      const student = cleanStudentName(row[3] || '').trim();
+      if (!tutor || !student) { skipped++; continue; }
       const feedback = (row[11] || '').trim();
       const topicsKnown = (row[12] || '').trim();
       const topicsCovered = (row[13] || '').trim();
       const startTopic = (row[14] || '').trim();
       const additionalRemarks = (row[16] || '').trim();
-      if (!feedback && !topicsKnown && !topicsCovered && !startTopic && !additionalRemarks) continue;
+      if (!feedback && !topicsKnown && !topicsCovered && !startTopic && !additionalRemarks) { skipped++; continue; }
+      const cacheEntry = sheetDataCache.find(e =>
+        e.tutor_name.toLowerCase() === tutor.toLowerCase() &&
+        cleanStudentName(e.student_name).toLowerCase() === student.toLowerCase()
+      );
+      if (!cacheEntry) { skipped++; continue; }
+      matched++;
       try {
         await sheets.spreadsheets.values.update({
           spreadsheetId: SPREADSHEET_ID,
-          range: `'Trial 2.0'!T${sheetRow}:X${sheetRow}`,
+          range: `'Trial 2.0'!T${cacheEntry.row}:X${cacheEntry.row}`,
           valueInputOption: 'USER_ENTERED',
           requestBody: { values: [[feedback, topicsKnown, topicsCovered, startTopic, additionalRemarks]] },
         });
         written++;
       } catch (e) {
-        console.error(`Failed writing to Trial 2.0 row ${sheetRow}:`, e.message);
+        console.error(`Failed writing to Trial 2.0 row ${cacheEntry.row}:`, e.message);
       }
     }
-    if (written > 0) console.log(`Backfilled ${written} rows from Assessment Sheet to Trial 2.0 (T-X)`);
+    console.log(`Assessment feedback backfill: matched=${matched}, written=${written}, skipped=${skipped}`);
     return written;
   } catch (err) {
     console.error('Assessment feedback backfill error:', err.message);
