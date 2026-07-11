@@ -1215,7 +1215,7 @@ app.post('/api/backfill-phones', requireAuth, requireAdmin, async (req, res) => 
     res.json({ success: true, phoneBackfill: count });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err.message, stack: err.stack });
   }
 });
 
@@ -1227,7 +1227,6 @@ app.get('/api/debug/assessment-sheet', requireAuth, requireAdmin, async (req, re
       range: `'${assessmentSheetTab}'!A:R`,
     });
     const rows = result.data.values || [];
-    const emptyPhone = [];
     const checks = [];
     for (let i = 1; i < Math.min(rows.length, 30); i++) {
       const row = rows[i];
@@ -1249,12 +1248,28 @@ app.get('/api/debug/assessment-sheet', requireAuth, requireAdmin, async (req, re
         checks.push({ assessmentRow: i + 1, tutor, student, sheetRow, byRow, byName });
       }
     }
+    // Quick write test — update first match
+    let writeTest = null;
+    if (checks.length > 0 && checks[0].byName) {
+      try {
+        const target = checks[0];
+        await sheets.spreadsheets.values.update({
+          spreadsheetId: ASSESSMENTS_SHEET_ID,
+          range: `'${assessmentSheetTab}'!C${target.assessmentRow}`,
+          valueInputOption: 'USER_ENTERED',
+          requestBody: { values: [[target.byName.phone]] },
+        });
+        writeTest = { assessmentRow: target.assessmentRow, newPhone: target.byName.phone, status: 'ok' };
+      } catch (e) {
+        writeTest = { assessmentRow: checks[0].assessmentRow, error: e.message };
+      }
+    }
     res.json({
       totalRows: rows.length,
-      emptyPhoneCount: emptyPhone.length,
       cacheSize: sheetDataCache.length,
       assessmentSheetTab,
       checks,
+      writeTest,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
