@@ -1176,13 +1176,13 @@ async function backfillAssessmentSheetPhones() {
       if (!phone) {
         checked++;
         let entry = null;
-        if (sheetRow) {
-          entry = sheetDataCache.find(e => String(e.row) === sheetRow);
-          if (entry) foundByRow++;
-        }
-        if (!entry && tutorName && studentName) {
+        if (tutorName && studentName) {
           entry = sheetDataCache.find(e => e.tutor_name.toLowerCase() === tutorName && e.student_name.toLowerCase() === studentName);
           if (entry) foundByName++;
+        }
+        if (!entry && sheetRow) {
+          entry = sheetDataCache.find(e => String(e.row) === sheetRow);
+          if (entry) foundByRow++;
         }
         if (entry && entry.phone) {
           foundPhone++;
