@@ -477,13 +477,6 @@ app.post('/api/assessments', async (req, res) => {
       (user_id, tutor_name, phone, slot, student_name, student_age, language, level, topics_known, topics_covered, start_topic, revision_topics, feedback, interest_level, additional_remarks, date, time, sheet_row)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     const sheetRowValue = (sheet_row !== undefined && sheet_row !== null && sheet_row !== '') ? parseInt(sheet_row) : null;
-    const result = stmt.run(
-      req.session.userId, tutor_name || '', phone || '', slot || '', student_name || '', student_age || '', language || '', level || '',
-      JSON.stringify(topics_known || []), JSON.stringify(topics_covered || []),
-      start_topic || '', JSON.stringify(revision_topics || []),
-      feedback, interest_level || 0, additional_remarks || '', date || '', time || '',
-      sheetRowValue
-    );
     let resolvedPhone = phone;
     let resolvedSheetRow = sheetRowValue;
     if (!resolvedSheetRow) {
@@ -494,6 +487,13 @@ app.post('/api/assessments', async (req, res) => {
       const cached = resolvedSheetRow ? sheetDataCache.find(e => e.row === resolvedSheetRow) : sheetDataCache.find(e => e.tutor_name.toLowerCase() === (tutor_name || '').toLowerCase() && e.student_name.toLowerCase() === (student_name || '').toLowerCase());
       if (cached && cached.phone) resolvedPhone = cached.phone;
     }
+    const result = stmt.run(
+      req.session.userId, tutor_name || '', resolvedPhone, slot || '', student_name || '', student_age || '', language || '', level || '',
+      JSON.stringify(topics_known || []), JSON.stringify(topics_covered || []),
+      start_topic || '', JSON.stringify(revision_topics || []),
+      feedback, interest_level || 0, additional_remarks || '', date || '', time || '',
+      resolvedSheetRow
+    );
     if (resolvedSheetRow) {
       updateSheetRow(resolvedSheetRow, 'Demo Done');
       db.prepare("INSERT INTO sheet_statuses (row_number, status, demo_status) VALUES (?, ?, ?) ON CONFLICT(row_number) DO UPDATE SET status = ?, demo_status = ?, updated_at = CURRENT_TIMESTAMP").run(resolvedSheetRow, 'Demo Done', 'Demo Done', 'Demo Done', 'Demo Done');
