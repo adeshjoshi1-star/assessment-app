@@ -1285,6 +1285,97 @@ async function backfillAssessmentFeedbackToTrialSheet() {
   }
 }
 
+app.post('/api/clear-trial-feedback', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const sheets = getSheetsClient();
+    const range = `'${assessmentSheetTab}'!A:R`;
+    const result = await sheets.spreadsheets.values.get({
+      spreadsheetId: ASSESSMENTS_SHEET_ID,
+      range,
+    });
+    const rows = result.data.values || [];
+    const toClear = [];
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      const sheetRow = (row[17] || '').trim();
+      if (sheetRow) toClear.push(parseInt(sheetRow));
+    }
+    let cleared = 0;
+    const uniqueRows = [...new Set(toClear)];
+    for (const r of uniqueRows) {
+      try {
+        await sheets.spreadsheets.values.update({
+          spreadsheetId: SPREADSHEET_ID,
+          range: `'Trial 2.0'!T${r}:X${r}`,
+          valueInputOption: 'USER_ENTERED',
+          requestBody: { values: [['', '', '', '', '']] },
+        });
+        cleared++;
+      } catch (e) {
+        console.error(`Failed to clear Trial 2.0 row ${r}:`, e.message);
+      }
+    }
+    res.json({ success: true, cleared, uniqueRows: uniqueRows.length });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/verify-trial-mapping', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const sheets = getSheetsClient();
+    const range = `'${assessmentSheetTab}'!A:R`;
+    const result = await sheets.spreadsheets.values.get({
+      spreadsheetId: ASSESSMENTS_SHEET_ID,
+      range,
+    });
+    const rows = result.data.values || [];
+    const samples = [];
+    let checked = 0;
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      const sheetRow = (row[17] || '').trim();
+      checked++;
+      if (sheetRow) {
+        const trialRow = parseInt(sheetRow);
+        const cacheEntry = sheetDataCache.find(e => e.row === trialRow);
+        samples.push({
+          assessmentRow: i + 1,
+          tutor: (row[1] || '').trim(),
+          student: (row[3] || '').trim(),
+          phone: (row[2] || '').trim(),
+          sheetRow: sheetRow,
+          cacheTutor: cacheEntry ? cacheEntry.tutor_name : null,
+          cacheStudent: cacheEntry ? cacheEntry.student_name : null,
+          cachePhone: cacheEntry ? (cacheEntry.phone || '') : null,
+          match: cacheEntry ? (cacheEntry.tutor_name.toLowerCase() === (row[1] || '').trim().toLowerCase()) : false,
+          feedback: (row[11] || '').trim().substring(0, 30),
+          topicsKnown: (row[12] || '').trim().substring(0, 30),
+          topicsCovered: (row[13] || '').trim().substring(0, 30),
+          startTopic: (row[14] || '').trim().substring(0, 30),
+          additionalRemarks: (row[16] || '').trim().substring(0, 30),
+        });
+      }
+    }
+    const bad = samples.filter(s => s.cacheTutor && !s.match);
+    const noCache = samples.filter(s => !s.cacheTutor);
+    res.json({
+      totalRows: rows.length,
+      checked,
+      rowsWithSheetRow: samples.length,
+      mismatchCount: bad.length,
+      noCacheCount: noCache.length,
+      samples: samples.slice(0, 30),
+      badMappings: bad.slice(0, 20),
+      noCacheRows: noCache.slice(0, 20),
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/backfill-trial-sheet', requireAuth, requireAdmin, async (req, res) => {
   try {
     const count = await backfillAssessmentFeedbackToTrialSheet();
