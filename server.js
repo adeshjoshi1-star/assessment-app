@@ -1273,7 +1273,8 @@ async function backfillAssessmentFeedbackToTrialSheet() {
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
       const tutor = (row[1] || '').trim();
-      const student = cleanStudentName(row[3] || '').trim();
+      const rawStudent = (row[3] || '').trim();
+      const student = cleanStudentName(rawStudent).trim();
       if (!tutor || !student) { skipped++; continue; }
       const feedback = (row[11] || '').trim();
       const topicsKnown = (row[12] || '').trim();
@@ -1281,10 +1282,19 @@ async function backfillAssessmentFeedbackToTrialSheet() {
       const startTopic = (row[14] || '').trim();
       const additionalRemarks = (row[16] || '').trim();
       if (!feedback && !topicsKnown && !topicsCovered && !startTopic && !additionalRemarks) { skipped++; continue; }
-      const cacheEntry = sheetDataCache.find(e =>
-        e.tutor_name.toLowerCase() === tutor.toLowerCase() &&
-        cleanStudentName(e.student_name).toLowerCase() === student.toLowerCase()
-      );
+      let cacheEntry = null;
+      if (rawStudent) {
+        cacheEntry = sheetDataCache.find(e =>
+          e.tutor_name.toLowerCase() === tutor.toLowerCase() &&
+          e.student_name.toLowerCase() === rawStudent.toLowerCase()
+        );
+      }
+      if (!cacheEntry) {
+        cacheEntry = sheetDataCache.find(e =>
+          e.tutor_name.toLowerCase() === tutor.toLowerCase() &&
+          cleanStudentName(e.student_name).toLowerCase() === student.toLowerCase()
+        );
+      }
       if (!cacheEntry) { skipped++; continue; }
       matched++;
       try {
