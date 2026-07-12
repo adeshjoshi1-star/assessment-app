@@ -1184,60 +1184,69 @@ async function backfillAssessmentSheetPhones() {
     const rows = res.data.values || [];
     if (rows.length < 2) { console.log('Assessment sheet has no data rows'); return 0; }
     let updated = 0;
-    let checked = 0;
+    let emptyChecked = 0;
+    let overwritten = 0;
+    let unmatched = 0;
     let foundByRow = 0;
     let foundByName = 0;
     let foundPhone = 0;
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
-      const phone = (row[2] || '').trim();
+      const currentPhone = (row[2] || '').trim();
       const sheetRow = (row[17] || '').trim();
       const tutorName = (row[1] || '').trim().toLowerCase();
       const studentName = (row[3] || '').trim().toLowerCase();
-      if (!phone) {
-        checked++;
-        let entry = null;
-        if (tutorName && studentName) {
-          entry = sheetDataCache.find(e => e.tutor_name.toLowerCase() === tutorName && e.student_name.toLowerCase() === studentName);
-          if (entry) foundByName++;
+      let entry = null;
+      if (tutorName && studentName) {
+        entry = sheetDataCache.find(e => e.tutor_name.toLowerCase() === tutorName && e.student_name.toLowerCase() === studentName);
+        if (entry) foundByName++;
+      }
+      if (!entry && sheetRow) {
+        entry = sheetDataCache.find(e => String(e.row) === sheetRow);
+        if (entry) foundByRow++;
+      }
+      if (!entry) { unmatched++; continue; }
+      const trialPhone = (entry.phone || '').trim();
+      if (trialPhone && trialPhone !== currentPhone) {
+        try {
+          await sheets.spreadsheets.values.update({
+            spreadsheetId: ASSESSMENTS_SHEET_ID,
+            range: `'${assessmentSheetTab}'!C${i + 1}`,
+            valueInputOption: 'USER_ENTERED',
+            requestBody: { values: [[trialPhone]] },
+          });
+          if (!currentPhone) emptyChecked++;
+          else overwritten++;
+          updated++;
+        } catch (updateErr) {
+          console.error(`Failed to update Assessment Sheet row ${i + 1}: ${updateErr.message}`);
         }
-        if (!entry && sheetRow) {
-          entry = sheetDataCache.find(e => String(e.row) === sheetRow);
-          if (entry) foundByRow++;
-        }
-        if (entry && entry.phone) {
-          foundPhone++;
-          try {
-            await sheets.spreadsheets.values.update({
-              spreadsheetId: ASSESSMENTS_SHEET_ID,
-              range: `'${assessmentSheetTab}'!C${i + 1}`,
-              valueInputOption: 'USER_ENTERED',
-              requestBody: { values: [[entry.phone]] },
-            });
-            updated++;
-          } catch (updateErr) {
-            console.error(`Failed to update Assessment Sheet row ${i + 1}: ${updateErr.message}`);
-          }
-        }
+      } else if (trialPhone) {
+        foundPhone++;
       }
     }
-    console.log(`Phone backfill: checked=${checked} emptyPhone rows, foundByRow=${foundByRow}, foundByName=${foundByName}, foundPhone=${foundPhone}, updated=${updated}`);
-    if (updated > 0) {
-      console.log(`Backfilled ${updated} phone numbers in Assessment Sheet (tab: ${assessmentSheetTab})`);
-    } else {
-      console.log('No phone numbers needed backfill in Assessment Sheet');
-    }
-    return updated;
+    console.log(`Phone sync: unmatched=${unmatched}, filled=${emptyChecked}, overwritten=${overwritten}, alreadyMatched=${foundPhone}`);
+    return { updated, emptyChecked, overwritten, unmatched };
   } catch (err) {
-    console.error('Assessment sheet phone backfill error:', err.message);
-    return -1;
+    console.error('Assessment sheet phone sync error:', err.message);
+    return { updated: -1, error: err.message };
   }
 }
 
 app.post('/api/backfill-phones', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const count = await backfillAssessmentSheetPhones();
-    res.json({ success: true, phoneBackfill: count });
+    const result = await backfillAssessmentSheetPhones();
+    res.json({ success: true, phoneBackfill: result });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message, stack: err.stack });
+  }
+});
+
+app.post('/api/sync-phones-to-assessment', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const result = await backfillAssessmentSheetPhones();
+    res.json({ success: true, message: 'Assessment Sheet phones synced from Trial 2.0', stats: result });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message, stack: err.stack });
