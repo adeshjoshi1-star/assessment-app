@@ -1474,7 +1474,52 @@ app.get('/api/diagnose-phones', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-app.post('/api/clear-trial-feedback', requireAuth, requireAdmin, async (req, res) => {
+app.post('/api/reverse-trial-phones', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const sheets = getSheetsClient();
+    const range = `'${assessmentSheetTab}'!A:R`;
+    const asResult = await sheets.spreadsheets.values.get({
+      spreadsheetId: ASSESSMENTS_SHEET_ID,
+      range,
+    });
+    const asRows = asResult.data.values || [];
+    const toClear = [];
+    for (let i = 1; i < asRows.length; i++) {
+      const row = asRows[i];
+      const phone = (row[2] || '').trim();
+      const tutor = (row[1] || '').trim();
+      const student = cleanStudentName(row[3] || '').trim();
+      if (!phone || !tutor || !student) continue;
+      const ce = sheetDataCache.find(e =>
+        e.tutor_name.toLowerCase() === tutor.toLowerCase() &&
+        cleanStudentName(e.student_name).toLowerCase() === student.toLowerCase()
+      );
+      if (!ce) continue;
+      if ((ce.phone || '').trim() !== phone) continue;
+      toClear.push(ce.row);
+    }
+    const unique = [...new Set(toClear)];
+    let cleared = 0;
+    for (const r of unique) {
+      try {
+        await sheets.spreadsheets.values.update({
+          spreadsheetId: SPREADSHEET_ID,
+          range: `'Trial 2.0'!R${r}`,
+          valueInputOption: 'USER_ENTERED',
+          requestBody: { values: [['']] },
+        });
+        const entry = sheetDataCache.find(e => e.row === r);
+        if (entry) entry.phone = '';
+        cleared++;
+      } catch (e) {
+        console.error(`Failed to clear Trial 2.0 row ${r} phone:`, e.message);
+      }
+    }
+    res.json({ success: true, cleared, uniqueRows: unique.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
   try {
     const sheets = getSheetsClient();
     const range = `'${assessmentSheetTab}'!A:R`;
