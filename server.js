@@ -1195,10 +1195,14 @@ async function backfillAssessmentSheetPhones() {
       const currentPhone = (row[2] || '').trim();
       const sheetRow = (row[17] || '').trim();
       const tutorName = (row[1] || '').trim().toLowerCase();
-      const studentName = cleanStudentName(row[3] || '').trim().toLowerCase();
+      const rawStudentName = (row[3] || '').trim().toLowerCase();
+      const studentName = cleanStudentName(rawStudentName).toLowerCase();
       let entry = null;
-      if (tutorName && studentName) {
-        entry = sheetDataCache.find(e => e.tutor_name.toLowerCase() === tutorName && cleanStudentName(e.student_name).toLowerCase() === studentName);
+      if (tutorName && rawStudentName) {
+        entry = sheetDataCache.find(e => e.tutor_name.toLowerCase() === tutorName && e.student_name.toLowerCase() === rawStudentName);
+        if (!entry) {
+          entry = sheetDataCache.find(e => e.tutor_name.toLowerCase() === tutorName && cleanStudentName(e.student_name).toLowerCase() === studentName);
+        }
         if (entry) foundByName++;
       }
       if (!entry && sheetRow) {
