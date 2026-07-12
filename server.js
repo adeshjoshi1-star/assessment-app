@@ -1520,6 +1520,8 @@ app.post('/api/reverse-trial-phones', requireAuth, requireAdmin, async (req, res
     res.status(500).json({ error: err.message });
   }
 });
+
+app.post('/api/clear-trial-feedback', requireAuth, requireAdmin, async (req, res) => {
   try {
     const sheets = getSheetsClient();
     const range = `'${assessmentSheetTab}'!A:R`;
