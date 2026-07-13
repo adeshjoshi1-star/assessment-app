@@ -1423,34 +1423,48 @@ async function fixFeedbackMatching() {
     corrections[correctEntry.row] = { vals: feedbackVals, tutor, student: rawStudent };
   }
 
+  // Build batch update requests
+  const batchRequests = [];
+
   // Clear stale data from wrong rows
   for (const row of staleRows) {
     const currentVals = trialRows[row - 1] || [];
     const hasData = currentVals.some(v => (v || '').trim());
     if (hasData) {
-      await sheets.spreadsheets.values.update({
-        spreadsheetId: SPREADSHEET_ID,
+      batchRequests.push({
         range: `'Trial 2.0'!T${row}:X${row}`,
-        valueInputOption: 'USER_ENTERED',
-        requestBody: { values: [['', '', '', '', '']] },
+        values: [['', '', '', '', '']],
       });
       cleared++;
-      console.log(`CLEARED stale feedback from Trial row ${row}`);
     }
   }
 
   // Write correct feedback to all correct rows
   for (const [row, data] of Object.entries(corrections)) {
-    await sheets.spreadsheets.values.update({
-      spreadsheetId: SPREADSHEET_ID,
+    batchRequests.push({
       range: `'Trial 2.0'!T${row}:X${row}`,
-      valueInputOption: 'USER_ENTERED',
-      requestBody: { values: [data.vals] },
+      values: [data.vals],
     });
     fixed++;
   }
 
-  console.log(`Fix feedback matching: fixed=${fixed}, cleared=${cleared}, skipped=${skipped}, phoneVerified=${phoneVerified}`);
+  // Apply all updates in batches of 50 to stay under rate limits
+  const BATCH_SIZE = 50;
+  for (let i = 0; i < batchRequests.length; i += BATCH_SIZE) {
+    const batch = batchRequests.slice(i, i + BATCH_SIZE);
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId: SPREADSHEET_ID,
+      requestBody: {
+        valueInputOption: 'USER_ENTERED',
+        data: batch,
+      },
+    });
+    if (i + BATCH_SIZE < batchRequests.length) {
+      await new Promise(r => setTimeout(r, 1000));
+    }
+  }
+
+  console.log(`Fix feedback matching: fixed=${fixed}, cleared=${cleared}, skipped=${skipped}, phoneVerified=${phoneVerified}, totalBatchUpdates=${batchRequests.length}`);
   return { fixed, cleared, skipped, phoneVerified };
 }
 
