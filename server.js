@@ -847,10 +847,10 @@ async function syncSheet() {
       const storedDemo = ss ? ss.demo_status : null;
       let useDemo;
       const hasAssessment = db.prepare('SELECT id FROM assessments WHERE sheet_row = ? LIMIT 1').get(i + 1);
-      if (storedDemo === 'Demo Not Done') {
-        useDemo = 'Demo Not Done';
-      } else if (hasAssessment) {
+      if (hasAssessment) {
         useDemo = 'Demo Done';
+      } else if (storedDemo === 'Demo Not Done') {
+        useDemo = 'Demo Not Done';
       } else if (sheetDemo === 'Demo Not Done') {
         useDemo = 'Demo Not Done';
       } else if (sheetDemo === 'Converted' || storedDemo === 'Converted') {
