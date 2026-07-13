@@ -1758,7 +1758,9 @@ app.post('/api/cleanup-wrong-links', requireAuth, requireAdmin, async (req, res)
         unlinked++;
         continue;
       }
-      if (entry.tutor_name.toLowerCase() !== a.tutor_name.toLowerCase()) {
+      const aStudent = cleanStudentName(a.student_name || '').toLowerCase();
+      const eStudent = cleanStudentName(entry.student_name || '').toLowerCase();
+      if (entry.tutor_name.toLowerCase() !== a.tutor_name.toLowerCase() || (aStudent && eStudent && aStudent !== eStudent)) {
         db.prepare('UPDATE assessments SET sheet_row = NULL WHERE id = ?').run(a.id);
         unlinked++;
       } else {
@@ -1766,7 +1768,9 @@ app.post('/api/cleanup-wrong-links', requireAuth, requireAdmin, async (req, res)
       }
     }
     console.log(`Cleanup: unlinked ${unlinked} wrong links, kept ${kept} correct`);
-    res.json({ success: true, unlinked, kept });
+    const stillLinked = db.prepare("SELECT COUNT(*) as cnt FROM assessments WHERE sheet_row IS NOT NULL").get().cnt;
+    const stillUnlinked = db.prepare("SELECT COUNT(*) as cnt FROM assessments WHERE sheet_row IS NULL AND tutor_name != '' AND student_name != '' AND slot != ''").get().cnt;
+    res.json({ success: true, unlinked, kept, stillLinked, stillUnlinked });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
