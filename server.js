@@ -1745,6 +1745,34 @@ app.post('/api/recover-assessments', requireAuth, requireAdmin, async (req, res)
   }
 });
 
+app.post('/api/cleanup-wrong-links', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const assessments = db.prepare("SELECT id, tutor_name, student_name, sheet_row FROM assessments WHERE sheet_row IS NOT NULL").all();
+    let unlinked = 0;
+    let kept = 0;
+    for (const a of assessments) {
+      if (!a.sheet_row) continue;
+      const entry = sheetDataCache.find(e => e.row === a.sheet_row);
+      if (!entry) {
+        db.prepare('UPDATE assessments SET sheet_row = NULL WHERE id = ?').run(a.id);
+        unlinked++;
+        continue;
+      }
+      if (entry.tutor_name.toLowerCase() !== a.tutor_name.toLowerCase()) {
+        db.prepare('UPDATE assessments SET sheet_row = NULL WHERE id = ?').run(a.id);
+        unlinked++;
+      } else {
+        kept++;
+      }
+    }
+    console.log(`Cleanup: unlinked ${unlinked} wrong links, kept ${kept} correct`);
+    res.json({ success: true, unlinked, kept });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/sync-health', requireAuth, (req, res) => {
   const totalAssessments = db.prepare('SELECT COUNT(*) as cnt FROM assessments').get().cnt;
   const linked = db.prepare("SELECT COUNT(*) as cnt FROM assessments WHERE sheet_row IS NOT NULL").get().cnt;
