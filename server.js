@@ -1270,9 +1270,11 @@ async function backfillAssessmentFeedbackToTrialSheet() {
     let written = 0;
     let skipped = 0;
     let matched = 0;
+    let phoneVerified = 0;
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
       const tutor = (row[1] || '').trim();
+      const phone = (row[2] || '').trim();
       const rawStudent = (row[3] || '').trim();
       const student = cleanStudentName(rawStudent).trim();
       if (!tutor || !student) { skipped++; continue; }
@@ -1283,17 +1285,34 @@ async function backfillAssessmentFeedbackToTrialSheet() {
       const additionalRemarks = (row[16] || '').trim();
       if (!feedback && !topicsKnown && !topicsCovered && !startTopic && !additionalRemarks) { skipped++; continue; }
       let cacheEntry = null;
+      // Step 1: exact name match (raw student name)
       if (rawStudent) {
         cacheEntry = sheetDataCache.find(e =>
           e.tutor_name.toLowerCase() === tutor.toLowerCase() &&
           e.student_name.toLowerCase() === rawStudent.toLowerCase()
         );
       }
+      // Step 2: fallback to cleaned name match
       if (!cacheEntry) {
         cacheEntry = sheetDataCache.find(e =>
           e.tutor_name.toLowerCase() === tutor.toLowerCase() &&
           cleanStudentName(e.student_name).toLowerCase() === student.toLowerCase()
         );
+      }
+      // Step 3: verify by phone, redirect if needed
+      if (cacheEntry && phone) {
+        if (cacheEntry.phone === phone) {
+          phoneVerified++;
+        } else {
+          const phoneMatch = sheetDataCache.find(e =>
+            e.tutor_name.toLowerCase() === tutor.toLowerCase() &&
+            e.phone === phone
+          );
+          if (phoneMatch) {
+            console.log(`PHONE REDIRECT: "${tutor}/${rawStudent}" name->row ${cacheEntry.row}, phone->row ${phoneMatch.row}`);
+            cacheEntry = phoneMatch;
+          }
+        }
       }
       if (!cacheEntry) { skipped++; continue; }
       matched++;
@@ -1309,12 +1328,130 @@ async function backfillAssessmentFeedbackToTrialSheet() {
         console.error(`Failed writing to Trial 2.0 row ${cacheEntry.row}:`, e.message);
       }
     }
-    console.log(`Assessment feedback backfill: matched=${matched}, written=${written}, skipped=${skipped}`);
+    console.log(`Assessment feedback backfill: matched=${matched}, phoneVerified=${phoneVerified}, written=${written}, skipped=${skipped}`);
     return written;
   } catch (err) {
     console.error('Assessment feedback backfill error:', err.message);
     return -1;
   }
+}
+
+async function fixFeedbackMatching() {
+  const sheets = getSheetsClient();
+  const assRes = await sheets.spreadsheets.values.get({
+    spreadsheetId: ASSESSMENTS_SHEET_ID,
+    range: `'${assessmentSheetTab}'!A:X`,
+  });
+  const assRows = assRes.data.values || [];
+  if (assRows.length < 2) { console.log('Assessment sheet has no data rows'); return { fixed: 0, cleared: 0, skipped: 0 }; }
+
+  // Read current Trial 2.0 T-X values
+  const trialRes = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: "'Trial 2.0'!T:X",
+  });
+  const trialRows = trialRes.data.values || [];
+
+  let fixed = 0;
+  let cleared = 0;
+  let skipped = 0;
+  let phoneVerified = 0;
+
+  // Map of correct Trial row → feedback values from Assessment Sheet
+  const corrections = {};
+  // Rows that were name-matched but were NOT the phone-verified correct row (stale data to clear)
+  const staleRows = new Set();
+
+  for (let i = 1; i < assRows.length; i++) {
+    const row = assRows[i];
+    const tutor = (row[1] || '').trim();
+    const phone = (row[2] || '').trim();
+    const rawStudent = (row[3] || '').trim();
+    const student = cleanStudentName(rawStudent).trim();
+    if (!tutor || !student) { skipped++; continue; }
+
+    const feedback = (row[11] || '').trim();
+    const topicsKnown = (row[12] || '').trim();
+    const topicsCovered = (row[13] || '').trim();
+    const startTopic = (row[14] || '').trim();
+    const additionalRemarks = (row[16] || '').trim();
+    if (!feedback && !topicsKnown && !topicsCovered && !startTopic && !additionalRemarks) { skipped++; continue; }
+
+    const feedbackVals = [feedback, topicsKnown, topicsCovered, startTopic, additionalRemarks];
+
+    // Find name-matched candidate (old behavior)
+    let nameMatch = null;
+    if (rawStudent) {
+      nameMatch = sheetDataCache.find(e =>
+        e.tutor_name.toLowerCase() === tutor.toLowerCase() &&
+        e.student_name.toLowerCase() === rawStudent.toLowerCase()
+      );
+    }
+    if (!nameMatch) {
+      nameMatch = sheetDataCache.find(e =>
+        e.tutor_name.toLowerCase() === tutor.toLowerCase() &&
+        cleanStudentName(e.student_name).toLowerCase() === student.toLowerCase()
+      );
+    }
+
+    // Find phone-verified correct entry
+    let correctEntry = null;
+    if (nameMatch && phone) {
+      if (nameMatch.phone === phone) {
+        correctEntry = nameMatch;
+        phoneVerified++;
+      } else {
+        const phoneMatch = sheetDataCache.find(e =>
+          e.tutor_name.toLowerCase() === tutor.toLowerCase() &&
+          e.phone === phone
+        );
+        if (phoneMatch) {
+          console.log(`FIX: "${tutor}/${rawStudent}" name->row ${nameMatch.row}, phone->row ${phoneMatch.row}`);
+          correctEntry = phoneMatch;
+          if (nameMatch.row !== phoneMatch.row) {
+            staleRows.add(nameMatch.row);
+          }
+        } else {
+          correctEntry = nameMatch;
+        }
+      }
+    } else {
+      correctEntry = nameMatch;
+    }
+
+    if (!correctEntry) { skipped++; continue; }
+    corrections[correctEntry.row] = { vals: feedbackVals, tutor, student: rawStudent };
+  }
+
+  // Clear stale data from wrong rows
+  for (const row of staleRows) {
+    const currentVals = trialRows[row - 1] || [];
+    const hasData = currentVals.some(v => (v || '').trim());
+    if (hasData) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `'Trial 2.0'!T${row}:X${row}`,
+        valueInputOption: 'USER_ENTERED',
+        requestBody: { values: [['', '', '', '', '']] },
+      });
+      cleared++;
+      console.log(`CLEARED stale feedback from Trial row ${row}`);
+    }
+  }
+
+  // Write correct feedback to all correct rows
+  for (const [row, data] of Object.entries(corrections)) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `'Trial 2.0'!T${row}:X${row}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [data.vals] },
+    });
+    fixed++;
+  }
+
+  console.log(`Fix feedback matching: fixed=${fixed}, cleared=${cleared}, skipped=${skipped}, phoneVerified=${phoneVerified}`);
+  return { fixed, cleared, skipped, phoneVerified };
 }
 
 async function backfillPhonesToTrialSheet() {
@@ -1639,6 +1776,16 @@ app.post('/api/backfill-trial-sheet', requireAuth, requireAdmin, async (req, res
   try {
     const count = await backfillAssessmentFeedbackToTrialSheet();
     res.json({ success: true, backfilled: count });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/fix-feedback', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const result = await fixFeedbackMatching();
+    res.json({ success: true, ...result });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
