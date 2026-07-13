@@ -1150,26 +1150,12 @@ app.post('/api/sync-sheet', requireAuth, async (req, res) => {
 });
 
 async function recoverUnlinkedAssessments() {
-  console.log('Starting assessment recovery...');
+  console.log('Starting assessment recovery (link-only, no append)...');
   backfillAssessments();
-  const missing = db.prepare("SELECT id, tutor_name, student_name, slot, date, time, student_age, language, level, interest_level, phone FROM assessments WHERE sheet_row IS NULL AND tutor_name != '' AND student_name != '' AND slot != ''").all();
-  console.log(`After backfill: ${missing.length} assessments still unlinked, attempting sheet append`);
-  let appended = 0;
-  for (const a of missing) {
-    const newRow = await appendToSheet({
-      demo_status: 'Demo Done',
-      slot: a.slot, date: a.date, time: a.time,
-      tutor_name: a.tutor_name, student_name: a.student_name,
-      age: a.student_age, language: a.language, phone: a.phone,
-    });
-    if (newRow) {
-      db.prepare('UPDATE assessments SET sheet_row = ? WHERE id = ?').run(newRow, a.id);
-      db.prepare("INSERT INTO sheet_statuses (row_number, status, demo_status) VALUES (?, ?, ?) ON CONFLICT(row_number) DO UPDATE SET status = ?, demo_status = ?, updated_at = CURRENT_TIMESTAMP").run(newRow, 'Demo Done', 'Demo Done', 'Demo Done', 'Demo Done');
-      console.log(`Appended & linked assessment ${a.id} (${a.tutor_name}/${a.student_name}) → sheet row ${newRow}`);
-      appended++;
-    }
+  const stillMissing = db.prepare("SELECT id, tutor_name, student_name, slot FROM assessments WHERE sheet_row IS NULL AND tutor_name != '' AND student_name != '' AND slot != ''").all();
+  if (stillMissing.length > 0) {
+    console.log(`Recovery: ${stillMissing.length} assessments remain unlinked (no matching Trial row)`);
   }
-  console.log(`Appended ${appended} new rows to Trial 2.0 sheet`);
   await backfillAssessmentSheetPhones();
 }
 
@@ -1429,7 +1415,7 @@ async function fixFeedbackMatching() {
   // Clear stale data from wrong rows
   for (const row of staleRows) {
     const currentVals = trialRows[row - 1] || [];
-    const hasData = currentVals.some(v => (v || '').trim());
+    const hasData = currentVals && currentVals.some(v => (v || '').trim());
     if (hasData) {
       batchRequests.push({
         range: `'Trial 2.0'!T${row}:X${row}`,
@@ -1879,27 +1865,14 @@ app.post('/api/recover-assessments', requireAuth, requireAdmin, async (req, res)
   try {
     await syncSheet();
     backfillAssessments();
-    const missing = db.prepare("SELECT id, tutor_name, student_name, slot, date, time, student_age, language, level, interest_level, phone FROM assessments WHERE sheet_row IS NULL AND tutor_name != '' AND student_name != '' AND slot != ''").all();
-    let appended = 0;
-    for (const a of missing) {
-      const newRow = await appendToSheet({
-        demo_status: 'Demo Done',
-        slot: a.slot, date: a.date, time: a.time,
-        tutor_name: a.tutor_name, student_name: a.student_name,
-        age: a.student_age, language: a.language, phone: a.phone,
-      });
-      if (newRow) {
-        db.prepare('UPDATE assessments SET sheet_row = ? WHERE id = ?').run(newRow, a.id);
-        db.prepare("INSERT INTO sheet_statuses (row_number, status, demo_status) VALUES (?, ?, ?) ON CONFLICT(row_number) DO UPDATE SET status = ?, demo_status = ?, updated_at = CURRENT_TIMESTAMP").run(newRow, 'Demo Done', 'Demo Done', 'Demo Done', 'Demo Done');
-        appended++;
-      }
-    }
+    const stillMissing = db.prepare("SELECT id, tutor_name, student_name, slot FROM assessments WHERE sheet_row IS NULL AND tutor_name != '' AND student_name != '' AND slot != ''").all();
+    console.log(`Recover: ${stillMissing.length} remain unlinked (no matching Trial row — will NOT append new rows)`);
     const phoneResult = await backfillAssessmentSheetPhones();
     const trialFeedbackResult = await backfillAssessmentFeedbackToTrialSheet();
     const phonePushResult = await backfillPhonesToTrialSheet();
     const linked = db.prepare("SELECT COUNT(*) as cnt FROM assessments WHERE sheet_row IS NOT NULL").get().cnt;
     const unlinked = db.prepare("SELECT COUNT(*) as cnt FROM assessments WHERE sheet_row IS NULL AND tutor_name != '' AND student_name != '' AND slot != ''").get().cnt;
-    res.json({ success: true, totalLinked: linked, totalUnlinked: unlinked, appendedNew: appended, skipped: missing.length - appended, phoneBackfill: phoneResult, trialFeedbackBackfill: trialFeedbackResult, phonePushToTrial: phonePushResult });
+    res.json({ success: true, totalLinked: linked, totalUnlinked: unlinked, phoneBackfill: phoneResult, trialFeedbackBackfill: trialFeedbackResult, phonePushToTrial: phonePushResult });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -1932,6 +1905,98 @@ app.post('/api/cleanup-wrong-links', requireAuth, requireAdmin, async (req, res)
     const stillLinked = db.prepare("SELECT COUNT(*) as cnt FROM assessments WHERE sheet_row IS NOT NULL").get().cnt;
     const stillUnlinked = db.prepare("SELECT COUNT(*) as cnt FROM assessments WHERE sheet_row IS NULL AND tutor_name != '' AND student_name != '' AND slot != ''").get().cnt;
     res.json({ success: true, unlinked, kept, stillLinked, stillUnlinked });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/cleanup-garbage', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const sheets = getSheetsClient();
+
+    // Find test entries and duplicate-appended rows to delete from DB
+    const testEntries = db.prepare("SELECT id, sheet_row FROM assessments WHERE tutor_name LIKE 'TEST_%' OR tutor_name LIKE 'test%' OR (tutor_name LIKE '%DEBUG%' AND tutor_name NOT IN ('TEST_DEBUG','TEST_DEBUG2'))").all();
+    const garbageRows = new Set();
+
+    for (const t of testEntries) {
+      if (t.sheet_row) garbageRows.add(t.sheet_row);
+      db.prepare('DELETE FROM assessments WHERE id = ?').run(t.id);
+    }
+    console.log(`Deleted ${testEntries.length} test entries from DB`);
+
+    // Find duplicate combos where multiple assessments share same tutor/student/slot
+    // but have DIFFERENT sheet_rows (the later ones are garbage from recoverUnlinked)
+    const allAssessments = db.prepare("SELECT id, tutor_name, student_name, slot, sheet_row FROM assessments WHERE sheet_row IS NOT NULL ORDER BY id ASC").all();
+    const comboGroups = {};
+    for (const a of allAssessments) {
+      const key = `${a.tutor_name}|${a.student_name}|${a.slot}`.toLowerCase();
+      if (!comboGroups[key]) comboGroups[key] = [];
+      comboGroups[key].push(a);
+    }
+    let unlinkedDuplicates = 0;
+    for (const [key, items] of Object.entries(comboGroups)) {
+      if (items.length <= 1) continue;
+      // Keep the first (earliest id) entry, unlink the rest
+      const keepRow = items[0].sheet_row;
+      for (let i = 1; i < items.length; i++) {
+        const a = items[i];
+        if (a.sheet_row && a.sheet_row !== keepRow) {
+          garbageRows.add(a.sheet_row);
+          db.prepare('UPDATE assessments SET sheet_row = NULL WHERE id = ?').run(a.id);
+          unlinkedDuplicates++;
+        } else if (a.sheet_row === keepRow) {
+          // Same row — keep one, delete extras
+          db.prepare('DELETE FROM assessments WHERE id = ?').run(a.id);
+          unlinkedDuplicates++;
+        }
+      }
+    }
+    console.log(`Unlinked ${unlinkedDuplicates} duplicate assessments, keeping earliest`);
+
+    // Clear content from garbage Trial rows (batch update)
+    const clearBatch = [];
+    for (const row of garbageRows) {
+      clearBatch.push({ range: `'Trial 2.0'!A${row}:R${row}`, values: [[...Array(18).fill('')]] });
+    }
+    // Also clear rows 1757-1763 (known test rows)
+    for (let row = 1757; row <= 1763; row++) {
+      if (!garbageRows.has(row)) {
+        clearBatch.push({ range: `'Trial 2.0'!A${row}:R${row}`, values: [[...Array(18).fill('')]] });
+      }
+    }
+
+    if (clearBatch.length > 0) {
+      const BATCH = 50;
+      for (let i = 0; i < clearBatch.length; i += BATCH) {
+        await sheets.spreadsheets.values.batchUpdate({
+          spreadsheetId: SPREADSHEET_ID,
+          requestBody: { valueInputOption: 'USER_ENTERED', data: clearBatch.slice(i, i + BATCH) },
+        });
+        if (i + BATCH < clearBatch.length) await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+
+    // Clear sheet_statuses for garbage rows
+    for (const row of garbageRows) {
+      db.prepare('DELETE FROM sheet_statuses WHERE row_number = ?').run(row);
+    }
+
+    // Re-sync
+    await syncSheet();
+
+    const remainingAssessments = db.prepare('SELECT COUNT(*) as cnt FROM assessments').get().cnt;
+    const linked = db.prepare("SELECT COUNT(*) as cnt FROM assessments WHERE sheet_row IS NOT NULL").get().cnt;
+    const unlinked = db.prepare("SELECT COUNT(*) as cnt FROM assessments WHERE sheet_row IS NULL AND tutor_name != '' AND student_name != '' AND slot != ''").get().cnt;
+    res.json({
+      success: true,
+      deletedTestEntries: testEntries.length,
+      unlinkedDuplicates,
+      clearedGarbageRows: clearBatch.length,
+      remainingAssessments,
+      linked,
+      unlinked,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
