@@ -129,8 +129,8 @@ function normalizeTutorName(raw) {
   return TUTOR_NAME_ALIASES[lower] || TUTOR_NAME_ALIASES[stripped] || key.charAt(0).toUpperCase() + key.slice(1);
 }
 
-function syncTutorsFromSheet() {
-  const names = [...new Set(sheetDataCache.map(e => e.tutor_name).filter(Boolean))];
+function syncTutorsFromSheet(entries) {
+  const names = [...new Set((entries || sheetDataCache).map(e => e.tutor_name).filter(Boolean))];
   const allTeachers = db.prepare("SELECT id, name, code FROM users WHERE role = 'teacher'").all();
   const existingByName = new Map();
   const canonicalToIds = new Map();
@@ -873,6 +873,8 @@ async function syncSheet() {
         status: ss ? ss.status : 'New',
       });
     }
+    // Auto-create tutors for any new names before filtering
+    syncTutorsFromSheet(entries);
     // Filter to only known tutors from users table
     const allTeachers = db.prepare("SELECT id, name, code FROM users WHERE role = 'teacher' AND code IS NOT NULL AND code != ''").all();
     const knownTutorNames = new Set(allTeachers.map(t => t.name.trim().toLowerCase()));
@@ -880,7 +882,6 @@ async function syncSheet() {
     sheetDataCache = filtered;
     lastSync = new Date().toISOString();
     console.log(`Sheet synced: ${filtered.length} entries (filtered from ${entries.length})`);
-    syncTutorsFromSheet();
     fixExistingMismatches();
     backfillAssessments();
   } catch (err) {
