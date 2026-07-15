@@ -53,6 +53,7 @@
         <button class="hamburger" id="hamburger"><i class="fas fa-bars"></i></button>
         <span class="topbar-title">Manage Tutors</span>
         <div class="topbar-right">
+          <button class="btn btn-secondary" id="changePasswordBtn" type="button">Change Admin Password</button>
           <span class="topbar-user" id="userName"></span>
         </div>
       </header>
@@ -267,6 +268,23 @@
         btn.textContent = 'Reset';
       }
     }
+
+    document.getElementById('changePasswordBtn').addEventListener('click', async () => {
+      const currentPassword = prompt('Enter your current admin password:');
+      if (!currentPassword) return;
+      const newPassword = prompt('Enter a new admin password (at least 12 characters):');
+      if (!newPassword) return;
+      const confirmation = prompt('Enter the new password again:');
+      if (newPassword !== confirmation) return alert('The new passwords do not match.');
+      const res = await fetch('/api/admin/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword, newPassword })
+      });
+      const data = await res.json();
+      if (!res.ok) return alert(data.error || 'Password change failed.');
+      alert('Admin password changed successfully.');
+    });
 
     document.getElementById('hamburger').addEventListener('click', () => {
       document.getElementById('sidebar').classList.toggle('open');

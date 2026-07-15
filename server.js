@@ -3,7 +3,9 @@ const session = require('express-session');
 const bcrypt = require('bcrypt');
 const Database = require('better-sqlite3');
 const path = require('path');
+const crypto = require('crypto');
 const SQLiteStore = require('better-sqlite3-session-store')(session);
+const { TUTOR_NAME_ALIASES, normalizeTutorName, sameTutorName } = require('./lib/tutors');
 
 const app = express();
 const fs = require('fs');
@@ -18,9 +20,11 @@ if (DB_PATH === '/data/data.db' && !fs.existsSync(DB_PATH) && fs.existsSync(LOCA
   console.log('Migrated local data.db to volume');
 }
 const db = new Database(DB_PATH);
+const IS_VOLUME_DATABASE = DB_PATH !== LOCAL_PATH;
+const ALLOW_DB_BOOTSTRAP = process.env.ALLOW_DB_BOOTSTRAP === 'true' || !IS_VOLUME_DATABASE;
 
 
-db.exec(`
+if (ALLOW_DB_BOOTSTRAP) db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -63,10 +67,17 @@ db.exec(`
   );
 `);
 
-try { db.exec('ALTER TABLE assessments ADD COLUMN sheet_row INTEGER DEFAULT NULL'); } catch (e) {}
-try { db.exec('ALTER TABLE users ADD COLUMN code TEXT UNIQUE'); } catch (e) {}
-try { db.exec('ALTER TABLE sheet_statuses ADD COLUMN demo_status TEXT'); } catch (e) {}
-try { db.exec("UPDATE sheet_statuses SET demo_status = 'Demo Done' WHERE row_number IN (SELECT sheet_row FROM assessments WHERE sheet_row IS NOT NULL) AND (demo_status IS NULL OR demo_status = '')"); } catch (e) {}
+if (ALLOW_DB_BOOTSTRAP) {
+  try { db.exec('ALTER TABLE assessments ADD COLUMN sheet_row INTEGER DEFAULT NULL'); } catch (e) {}
+  try { db.exec('ALTER TABLE users ADD COLUMN code TEXT UNIQUE'); } catch (e) {}
+  try { db.exec('ALTER TABLE sheet_statuses ADD COLUMN demo_status TEXT'); } catch (e) {}
+} else {
+  for (const table of ['users', 'sheet_statuses', 'assessments']) {
+    if (!db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table)) {
+      throw new Error(`Required table ${table} is missing; database bootstrap is disabled`);
+    }
+  }
+}
 
 function nameHash(name) {
   let hash = 0;
@@ -89,46 +100,6 @@ function generateTutorCode(name, existingCodes = new Set()) {
   return '0001';
 }
 
-const TUTOR_NAME_ALIASES = {
-  'sumith': 'Sumith',
-  'sumit': 'Sumith',
-  'sumith rajan': 'Sumith',
-  'sumith ranjan': 'Sumith',
-  'sumith raj': 'Sumith',
-  'malavika': 'Malavika',
-  'malavika r': 'Malavika',
-  'yatin': 'Yatin',
-  'yathin': 'Yatin',
-  'yathin pradeep': 'Yatin',
-  'yatin pradeep': 'Yatin',
-  'abhishek': 'Abhishek',
-  'abhishek tm': 'Abhishek',
-  'ashitha': 'Ashitha KM',
-  'ashitha km': 'Ashitha KM',
-  'ashitaa': 'Ashitha KM',
-  'ashitaa k m': 'Ashitha KM',
-  'lakshya': 'Lakshya',
-  'pavan': 'Pavan',
-  'sahil': 'Sahil',
-  'selin': 'Selin',
-  'vishnu': 'Vishnu',
-  'reshma': 'Reshma',
-  'ayswarya': 'Ayswarya',
-};
-
-function normalizeTutorName(raw) {
-  let key = (raw || '').trim();
-  if (!key) return null;
-  const lower = key.toLowerCase();
-  if (['no_tutor', 'no_tutor_added', 'no tutor', 'no tutor added', 'unknown', 'deleted', 'none', ''].includes(lower)) return null;
-  if (/^no.?tutor/i.test(key)) return null;
-  if (/^deleted/i.test(key)) return null;
-  if (lower.length < 2) return null;
-  if (lower === 'su') return null;
-  const stripped = lower.replace(/[^a-z0-9 ]/g, '');
-  return TUTOR_NAME_ALIASES[lower] || TUTOR_NAME_ALIASES[stripped] || key.charAt(0).toUpperCase() + key.slice(1);
-}
-
 function syncTutorsFromSheet(entries) {
   const names = [...new Set((entries || sheetDataCache).map(e => e.tutor_name).filter(Boolean))];
   const allTeachers = db.prepare("SELECT id, name, code FROM users WHERE role = 'teacher'").all();
@@ -143,7 +114,7 @@ function syncTutorsFromSheet(entries) {
     canonicalToIds.get(canon).push(t);
   }
   const existingCodes = new Set(allTeachers.filter(t => t.code).map(t => t.code));
-  const dummyPass = bcrypt.hashSync('tutor123', 10);
+  const dummyPass = bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), 10);
   for (const name of names) {
     const key = name.trim().toLowerCase();
     if (!key || existingByName.has(key)) continue;
@@ -169,21 +140,21 @@ function syncTutorsFromSheet(entries) {
   syncTutorCodesToSheet();
 }
 
-const tutorsWithoutCode = db.prepare("SELECT id, name FROM users WHERE role = 'teacher' AND (code IS NULL OR code = '')").all();
-const existingCodes = new Set(db.prepare("SELECT code FROM users WHERE role = 'teacher' AND code IS NOT NULL").all().map(r => r.code));
-for (const t of tutorsWithoutCode) {
-  const code = generateTutorCode(t.name, existingCodes);
-  db.prepare('UPDATE users SET code = ? WHERE id = ?').run(code, t.id);
-  console.log(`Generated code ${code} for tutor ${t.name}`);
-}
+if (ALLOW_DB_BOOTSTRAP) {
+  const tutorsWithoutCode = db.prepare("SELECT id, name FROM users WHERE role = 'teacher' AND (code IS NULL OR code = '')").all();
+  const existingCodes = new Set(db.prepare("SELECT code FROM users WHERE role = 'teacher' AND code IS NOT NULL").all().map(r => r.code));
+  for (const t of tutorsWithoutCode) {
+    const code = generateTutorCode(t.name, existingCodes);
+    db.prepare('UPDATE users SET code = ? WHERE id = ?').run(code, t.id);
+  }
 
-const ADMIN_EMAIL = 'admin@ete.com';
-const ADMIN_PASSWORD = 'chessislive';
-const existingAdmin = db.prepare('SELECT id FROM users WHERE email = ?').get(ADMIN_EMAIL);
-if (!existingAdmin) {
-  const hash = bcrypt.hashSync(ADMIN_PASSWORD, 10);
-  db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)').run('Admin', ADMIN_EMAIL, hash, 'admin');
-  console.log('Default admin seeded: admin@ete.com / chessislive');
+  const adminEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+  const adminPassword = process.env.ADMIN_PASSWORD || '';
+  if (adminEmail && adminPassword.length >= 12 && !db.prepare('SELECT id FROM users WHERE email = ?').get(adminEmail)) {
+    const hash = bcrypt.hashSync(adminPassword, 10);
+    db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)').run('Admin', adminEmail, hash, 'admin');
+    console.log('Bootstrap admin created from environment variables');
+  }
 }
 
 const INITIAL_TUTORS = [
@@ -200,9 +171,9 @@ const INITIAL_TUTORS = [
 ];
 
 const existingTutorCount = db.prepare("SELECT COUNT(*) AS cnt FROM users WHERE role = 'teacher'").get().cnt;
-if (existingTutorCount === 0) {
+if (ALLOW_DB_BOOTSTRAP && existingTutorCount === 0) {
   const insert = db.prepare('INSERT INTO users (name, email, password, role, code) VALUES (?, ?, ?, ?, ?)');
-  const dummyPass = bcrypt.hashSync('tutor123', 10);
+  const dummyPass = bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), 10);
   const allCodes = new Set();
   for (const name of INITIAL_TUTORS) {
     const code = generateTutorCode(name, allCodes);
@@ -212,17 +183,33 @@ if (existingTutorCount === 0) {
   console.log(`Seeded ${INITIAL_TUTORS.length} initial tutors with codes`);
 }
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.set('trust proxy', 1);
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'");
+  next();
+});
+app.use(express.json({ limit: '100kb' }));
+app.use(express.urlencoded({ extended: true, limit: '100kb' }));
+const sessionSecret = process.env.SESSION_SECRET || (!IS_VOLUME_DATABASE ? 'local-development-only-secret' : '');
+if (!sessionSecret) throw new Error('SESSION_SECRET is required when using the persistent database');
 app.use(session({
   store: new SQLiteStore({
     client: db,
     expired: { clear: true, intervalMs: 900000 }
   }),
-  secret: process.env.SESSION_SECRET || 'asmnt-secret-k3y-2026',
+  secret: sessionSecret,
   resave: false,
   saveUninitialized: false,
-  cookie: { maxAge: 24 * 60 * 60 * 1000 }
+  cookie: {
+    maxAge: 8 * 60 * 60 * 1000,
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: IS_VOLUME_DATABASE,
+  }
 }));
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -233,14 +220,43 @@ function requireAuth(req, res, next) {
   next();
 }
 
-app.post('/api/login', async (req, res) => {
+function requireSameOrigin(req, res, next) {
+  const origin = req.get('origin');
+  if (!origin) return next();
+  try {
+    if (new URL(origin).host === req.get('host')) return next();
+  } catch (e) {}
+  return res.status(403).json({ error: 'Cross-origin request rejected' });
+}
+
+const loginAttempts = new Map();
+function loginRateLimit(req, res, next) {
+  const now = Date.now();
+  const key = req.ip || req.socket.remoteAddress || 'unknown';
+  const recent = (loginAttempts.get(key) || []).filter(t => now - t < 15 * 60 * 1000);
+  if (recent.length >= 10) return res.status(429).json({ error: 'Too many login attempts. Try again later.' });
+  recent.push(now);
+  loginAttempts.set(key, recent);
+  next();
+}
+
+function canAccessTutor(req, tutorName) {
+  return req.session.role === 'admin' || (req.session.role === 'teacher' && sameTutorName(req.session.name, tutorName));
+}
+
+function validateRowAccess(req, row) {
+  const entry = sheetDataCache.find(e => e.row === row);
+  return Boolean(entry && canAccessTutor(req, entry.tutor_name));
+}
+
+app.post('/api/login', loginRateLimit, requireSameOrigin, async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required' });
     }
     const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-    if (!user) {
+    if (!user || user.role !== 'admin') {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
     const match = await bcrypt.compare(password, user.password);
@@ -257,7 +273,7 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-app.post('/api/logout', (req, res) => {
+app.post('/api/logout', requireSameOrigin, (req, res) => {
   req.session.destroy();
   res.json({ success: true });
 });
@@ -267,6 +283,25 @@ app.get('/api/me', (req, res) => {
     return res.json({ authenticated: false });
   }
   res.json({ authenticated: true, name: req.session.name, role: req.session.role });
+});
+
+app.get('/api/health', (req, res) => {
+  try {
+    db.prepare('SELECT 1').get();
+    let storage = null;
+    if (typeof fs.statfsSync === 'function') {
+      const stats = fs.statfsSync(path.dirname(DB_PATH));
+      const totalBytes = Number(stats.blocks) * Number(stats.bsize);
+      const freeBytes = Number(stats.bavail) * Number(stats.bsize);
+      storage = {
+        freePercent: totalBytes > 0 ? Math.round((freeBytes / totalBytes) * 1000) / 10 : null,
+        low: totalBytes > 0 && freeBytes / totalBytes < 0.1,
+      };
+    }
+    res.json({ status: storage?.low ? 'degraded' : 'ok', database: 'ok', storage });
+  } catch (error) {
+    res.status(503).json({ status: 'error', database: 'unavailable' });
+  }
 });
 
 function requireAdmin(req, res, next) {
@@ -279,6 +314,25 @@ function requireAdmin(req, res, next) {
 app.get('/api/admin/tutors/debug-raw', requireAuth, requireAdmin, (req, res) => {
   const tutors = db.prepare("SELECT id, name, code, role, created_at FROM users WHERE role = 'teacher' ORDER BY name ASC").all();
   res.json(tutors);
+});
+
+app.post('/api/admin/change-password', requireAuth, requireAdmin, requireSameOrigin, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || typeof newPassword !== 'string' || newPassword.length < 12) {
+      return res.status(400).json({ error: 'Current password and a new password of at least 12 characters are required' });
+    }
+    const admin = db.prepare("SELECT id, password FROM users WHERE id = ? AND role = 'admin'").get(req.session.userId);
+    if (!admin || !(await bcrypt.compare(currentPassword, admin.password))) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+    const hash = await bcrypt.hash(newPassword, 10);
+    db.prepare('UPDATE users SET password = ? WHERE id = ?').run(hash, admin.id);
+    res.json({ success: true });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 app.get('/api/admin/tutors', requireAuth, requireAdmin, (req, res) => {
@@ -296,7 +350,7 @@ app.get('/api/admin/tutors', requireAuth, requireAdmin, (req, res) => {
   res.json(deduped);
 });
 
-app.post('/api/admin/tutors', requireAuth, requireAdmin, (req, res) => {
+app.post('/api/admin/tutors', requireAuth, requireAdmin, requireSameOrigin, (req, res) => {
   try {
     const { name, code } = req.body;
     if (!name || !code) {
@@ -310,7 +364,7 @@ app.post('/api/admin/tutors', requireAuth, requireAdmin, (req, res) => {
       return res.status(409).json({ error: 'This code is already in use' });
     }
     const dummyEmail = `tutor_${code}@internal.local`;
-    const dummyPass = bcrypt.hashSync('internal', 10);
+    const dummyPass = bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), 10);
     db.prepare('INSERT INTO users (name, email, password, role, code) VALUES (?, ?, ?, ?, ?)').run(name, dummyEmail, dummyPass, 'teacher', code);
     res.json({ success: true });
   } catch (err) {
@@ -319,7 +373,7 @@ app.post('/api/admin/tutors', requireAuth, requireAdmin, (req, res) => {
   }
 });
 
-app.delete('/api/admin/tutors/:id', requireAuth, requireAdmin, (req, res) => {
+app.delete('/api/admin/tutors/:id', requireAuth, requireAdmin, requireSameOrigin, (req, res) => {
   const tutor = db.prepare('SELECT id, role FROM users WHERE id = ?').get(req.params.id);
   if (!tutor) return res.status(404).json({ error: 'Tutor not found' });
   if (tutor.role === 'admin') return res.status(403).json({ error: 'Cannot delete admin users' });
@@ -327,7 +381,7 @@ app.delete('/api/admin/tutors/:id', requireAuth, requireAdmin, (req, res) => {
   res.json({ success: true });
 });
 
-app.post('/api/admin/tutors/:id/reset-code', requireAuth, requireAdmin, (req, res) => {
+app.post('/api/admin/tutors/:id/reset-code', requireAuth, requireAdmin, requireSameOrigin, (req, res) => {
   try {
     const tutor = db.prepare('SELECT id, name FROM users WHERE id = ? AND role = ?').get(req.params.id, 'teacher');
     if (!tutor) return res.status(404).json({ error: 'Tutor not found' });
@@ -367,16 +421,17 @@ function requireTutor(req, res, next) {
   next();
 }
 
-app.post('/api/tutor/login', (req, res) => {
+app.post('/api/tutor/login', loginRateLimit, requireSameOrigin, (req, res) => {
   try {
-    const { code } = req.body;
+    const { code, tutor_name } = req.body;
     if (!code) return res.status(400).json({ error: 'Code is required' });
     const tutor = db.prepare("SELECT id, name, role FROM users WHERE code = ? AND role = 'teacher'").get(code);
     if (!tutor) return res.status(401).json({ error: 'Invalid code' });
+    if (tutor_name && !sameTutorName(tutor.name, tutor_name)) return res.status(401).json({ error: 'Code does not match the selected tutor' });
     req.session.userId = tutor.id;
     req.session.role = tutor.role;
-    req.session.name = tutor.name;
-    res.json({ success: true, name: tutor.name });
+    req.session.name = normalizeTutorName(tutor.name) || tutor.name;
+    res.json({ success: true, name: req.session.name });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -394,7 +449,7 @@ app.get('/api/tutor-names', (req, res) => {
   const seen = new Set();
   const deduped = [];
   for (const t of tutors) {
-    const canon = TUTOR_NAME_ALIASES[t.name.trim().toLowerCase()] || t.name.trim();
+    const canon = normalizeTutorName(t.name);
     const key = canon.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
@@ -467,11 +522,22 @@ app.get('/api/topics/:level', (req, res) => {
   res.json(topics);
 });
 
-app.post('/api/assessments', async (req, res) => {
+app.post('/api/assessments', requireAuth, requireSameOrigin, async (req, res) => {
   try {
     const { tutor_name, phone, slot, student_name, student_age, language, level, topics_known, topics_covered, start_topic, revision_topics, feedback, interest_level, additional_remarks, date, time, sheet_row } = req.body;
-    if (!feedback) {
+    const required = [tutor_name, slot, student_name, student_age, language, level, feedback, date, time];
+    if (required.some(value => typeof value !== 'string' || !value.trim()) || !Number.isInteger(Number(interest_level)) || Number(interest_level) < 1 || Number(interest_level) > 5) {
       return res.status(400).json({ error: 'Required fields missing' });
+    }
+    if ([tutor_name, phone, slot, student_name, student_age, language, level, start_topic, additional_remarks, date, time].some(value => value && String(value).length > 1000) || feedback.length > 10000) {
+      return res.status(400).json({ error: 'One or more fields are too long' });
+    }
+    if (req.session.role === 'teacher' && !sameTutorName(req.session.name, tutor_name)) {
+      return res.status(403).json({ error: 'Tutor access denied' });
+    }
+    const requestedRow = Number.parseInt(sheet_row, 10);
+    if (req.session.role === 'teacher' && (!Number.isInteger(requestedRow) || !validateRowAccess(req, requestedRow))) {
+      return res.status(403).json({ error: 'This demo is not assigned to you' });
     }
     const stmt = db.prepare(`INSERT INTO assessments
       (user_id, tutor_name, phone, slot, student_name, student_age, language, level, topics_known, topics_covered, start_topic, revision_topics, feedback, interest_level, additional_remarks, date, time, sheet_row)
@@ -529,7 +595,7 @@ app.post('/api/assessments', async (req, res) => {
   }
 });
 
-app.get('/api/assessments', requireAuth, (req, res) => {
+app.get('/api/assessments', requireAuth, requireAdmin, (req, res) => {
   const { tutor } = req.query;
   let list;
   if (tutor) {
@@ -540,8 +606,10 @@ app.get('/api/assessments', requireAuth, (req, res) => {
   res.json(list);
 });
 
-app.get('/api/assessments/by-row/:row', (req, res) => {
+app.get('/api/assessments/by-row/:row', requireAuth, (req, res) => {
   const row = parseInt(req.params.row);
+  if (!Number.isInteger(row) || row < 1) return res.status(400).json({ error: 'Invalid row' });
+  if (!validateRowAccess(req, row)) return res.status(403).json({ error: 'Access denied' });
   let a = db.prepare('SELECT * FROM assessments WHERE sheet_row = ? ORDER BY created_at DESC LIMIT 1').get(row);
   if (!a) {
     const entry = sheetDataCache.find(e => e.row === row);
@@ -559,9 +627,6 @@ app.get('/api/assessments/by-row/:row', (req, res) => {
           LOWER(student_name) = LOWER(?)
           ORDER BY created_at DESC LIMIT 1`).get(entry.tutor_name, entry.student_name);
       }
-      if (a) {
-        db.prepare('UPDATE assessments SET sheet_row = ? WHERE id = ?').run(row, a.id);
-      }
     }
   }
   if (!a) return res.json(null);
@@ -577,22 +642,25 @@ app.get('/api/assessments/by-row/:row', (req, res) => {
 app.get('/api/assessments/:id', requireAuth, (req, res) => {
   const a = db.prepare('SELECT * FROM assessments WHERE id = ?').get(req.params.id);
   if (!a) return res.status(404).json({ error: 'Not found' });
+  if (!canAccessTutor(req, a.tutor_name)) return res.status(403).json({ error: 'Access denied' });
   a.topics_known = JSON.parse(a.topics_known || '[]');
   a.topics_covered = JSON.parse(a.topics_covered || '[]');
   a.revision_topics = JSON.parse(a.revision_topics || '[]');
   res.json(a);
 });
 
-app.delete('/api/assessments/:id', requireAuth, (req, res) => {
-  const a = db.prepare('SELECT id FROM assessments WHERE id = ?').get(req.params.id);
+app.delete('/api/assessments/:id', requireAuth, requireSameOrigin, (req, res) => {
+  const a = db.prepare('SELECT id, tutor_name FROM assessments WHERE id = ?').get(req.params.id);
   if (!a) return res.status(404).json({ error: 'Not found' });
+  if (!canAccessTutor(req, a.tutor_name)) return res.status(403).json({ error: 'Access denied' });
   db.prepare('DELETE FROM assessments WHERE id = ?').run(req.params.id);
   res.json({ success: true });
 });
 
-app.delete('/api/assessments/by-row/:row', async (req, res) => {
+app.delete('/api/assessments/by-row/:row', requireAuth, requireSameOrigin, async (req, res) => {
   try {
     const row = parseInt(req.params.row);
+    if (!Number.isInteger(row) || !validateRowAccess(req, row)) return res.status(403).json({ error: 'Access denied' });
     db.prepare('DELETE FROM assessments WHERE sheet_row = ?').run(row);
     db.prepare("INSERT INTO sheet_statuses (row_number, status, demo_status) VALUES (?, ?, ?) ON CONFLICT(row_number) DO UPDATE SET status = ?, demo_status = ?, updated_at = CURRENT_TIMESTAMP").run(row, 'New', 'New', 'New', 'New');
     const entry = sheetDataCache.find(e => e.row === row);
@@ -605,7 +673,7 @@ app.delete('/api/assessments/by-row/:row', async (req, res) => {
   }
 });
 
-app.patch('/api/assessments/:id/status', requireAuth, (req, res) => {
+app.patch('/api/assessments/:id/status', requireAuth, requireAdmin, requireSameOrigin, (req, res) => {
   const { status } = req.body;
   const valid = ['New', 'Contacted', 'CNR and Messaged', 'Hot/Potential', 'CNR 1', 'CNR 2', 'CNR 3', 'Not Interested', 'Converted'];
   if (!valid.includes(status)) return res.status(400).json({ error: 'Invalid status' });
@@ -613,7 +681,7 @@ app.patch('/api/assessments/:id/status', requireAuth, (req, res) => {
   res.json({ success: true });
 });
 
-app.get('/api/tutors', requireAuth, (req, res) => {
+app.get('/api/tutors', requireAuth, requireAdmin, (req, res) => {
   const tutors = db.prepare("SELECT DISTINCT tutor_name FROM assessments WHERE tutor_name != '' ORDER BY tutor_name").all();
   res.json(tutors.map(t => t.tutor_name));
 });
@@ -873,17 +941,13 @@ async function syncSheet() {
         status: ss ? ss.status : 'New',
       });
     }
-    // Auto-create tutors for any new names before filtering
-    syncTutorsFromSheet(entries);
-    // Filter to only known tutors from users table
+    // Keep production sync read-only: adding tutors remains an explicit admin action.
     const allTeachers = db.prepare("SELECT id, name, code FROM users WHERE role = 'teacher' AND code IS NOT NULL AND code != ''").all();
-    const knownTutorNames = new Set(allTeachers.map(t => t.name.trim().toLowerCase()));
-    const filtered = entries.filter(e => knownTutorNames.has(e.tutor_name.toLowerCase()));
+    const knownTutorNames = new Set(allTeachers.map(t => (normalizeTutorName(t.name) || '').toLowerCase()));
+    const filtered = entries.filter(e => knownTutorNames.has((normalizeTutorName(e.tutor_name) || '').toLowerCase()));
     sheetDataCache = filtered;
     lastSync = new Date().toISOString();
     console.log(`Sheet synced: ${filtered.length} entries (filtered from ${entries.length})`);
-    fixExistingMismatches();
-    backfillAssessments();
   } catch (err) {
     console.error('Sheet sync error:', err.message);
   }
@@ -993,15 +1057,18 @@ function backfillAssessments() {
   }
 }
 
-app.get('/api/sheet-tutors', (req, res) => {
+app.get('/api/sheet-tutors', requireAuth, (req, res) => {
   const tutors = [...new Set(sheetDataCache.map(e => e.tutor_name).filter(Boolean))].sort();
   res.json(tutors);
 });
 
-app.get('/api/sheet-tutor/:name', (req, res) => {
-  const tutorName = (normalizeTutorName(decodeURIComponent(req.params.name)) || '').toLowerCase();
-  let entries = sheetDataCache.filter(e => e.tutor_name.toLowerCase() === tutorName);
-  if (!entries.length) {
+app.get('/api/sheet-tutor/:name', requireAuth, (req, res) => {
+  const requestedName = normalizeTutorName(decodeURIComponent(req.params.name)) || '';
+  const effectiveName = req.session.role === 'teacher' ? req.session.name : requestedName;
+  if (!canAccessTutor(req, effectiveName)) return res.status(403).json({ error: 'Access denied' });
+  const tutorName = (normalizeTutorName(effectiveName) || '').toLowerCase();
+  let entries = sheetDataCache.filter(e => sameTutorName(e.tutor_name, tutorName));
+  if (req.session.role === 'admin' && !entries.length) {
     const firstWord = tutorName.split(/\s+/)[0];
     if (firstWord.length > 0) {
       entries = sheetDataCache.filter(e => {
@@ -1011,7 +1078,7 @@ app.get('/api/sheet-tutor/:name', (req, res) => {
       });
     }
   }
-  if (!entries.length) {
+  if (req.session.role === 'admin' && !entries.length) {
     const words = tutorName.split(/\s+/);
     entries = sheetDataCache.filter(e => {
       const sn = e.tutor_name.toLowerCase();
@@ -1094,7 +1161,7 @@ app.get('/api/demo-count', requireAuth, (req, res) => {
   res.json({ count });
 });
 
-app.get('/api/sheet-data', requireAuth, (req, res) => {
+app.get('/api/sheet-data', requireAuth, requireAdmin, (req, res) => {
   let entries = sheetDataCache;
   if (req.query.tutor) {
     const t = req.query.tutor.toLowerCase();
@@ -1103,8 +1170,9 @@ app.get('/api/sheet-data', requireAuth, (req, res) => {
   res.json({ entries, lastSync });
 });
 
-app.patch('/api/sheet-data/:row/demo-not-done', async (req, res) => {
+app.patch('/api/sheet-data/:row/demo-not-done', requireAuth, requireSameOrigin, async (req, res) => {
   const row = parseInt(req.params.row);
+  if (!Number.isInteger(row) || !validateRowAccess(req, row)) return res.status(403).json({ error: 'Access denied' });
   const entry = sheetDataCache.find(e => e.row === row);
   if (entry) entry.demo_status = 'Demo Not Done';
   db.prepare("INSERT INTO sheet_statuses (row_number, status, demo_status) VALUES (?, ?, ?) ON CONFLICT(row_number) DO UPDATE SET demo_status = ?, updated_at = CURRENT_TIMESTAMP").run(row, 'New', 'Demo Not Done', 'Demo Not Done');
@@ -1116,7 +1184,7 @@ app.patch('/api/sheet-data/:row/demo-not-done', async (req, res) => {
   res.json({ success: true });
 });
 
-app.patch('/api/sheet-data/:row/status', requireAuth, async (req, res) => {
+app.patch('/api/sheet-data/:row/status', requireAuth, requireAdmin, requireSameOrigin, async (req, res) => {
   const { status } = req.body;
   const valid = ['New', 'In Conversation', 'CNR', 'Hot', 'Converted'];
   if (!valid.includes(status)) return res.status(400).json({ error: 'Invalid status' });
@@ -1145,7 +1213,7 @@ app.patch('/api/sheet-data/:row/status', requireAuth, async (req, res) => {
   res.json({ success: true });
 });
 
-app.post('/api/sync-sheet', requireAuth, async (req, res) => {
+app.post('/api/sync-sheet', requireAuth, requireAdmin, requireSameOrigin, async (req, res) => {
   await syncSheet();
   res.json({ success: true, count: sheetDataCache.length, lastSync });
 });
@@ -1224,7 +1292,7 @@ async function backfillAssessmentSheetPhones() {
   }
 }
 
-app.post('/api/backfill-phones', requireAuth, requireAdmin, async (req, res) => {
+app.post('/api/backfill-phones', requireAuth, requireAdmin, requireSameOrigin, async (req, res) => {
   try {
     const result = await backfillAssessmentSheetPhones();
     res.json({ success: true, phoneBackfill: result });
@@ -1234,7 +1302,7 @@ app.post('/api/backfill-phones', requireAuth, requireAdmin, async (req, res) => 
   }
 });
 
-app.post('/api/sync-phones-to-assessment', requireAuth, requireAdmin, async (req, res) => {
+app.post('/api/sync-phones-to-assessment', requireAuth, requireAdmin, requireSameOrigin, async (req, res) => {
   try {
     const result = await backfillAssessmentSheetPhones();
     res.json({ success: true, message: 'Assessment Sheet phones synced from Trial 2.0', stats: result });
@@ -1507,7 +1575,7 @@ async function backfillPhonesToTrialSheet() {
   }
 }
 
-app.post('/api/backfill-phones-to-trial', requireAuth, requireAdmin, async (req, res) => {
+app.post('/api/backfill-phones-to-trial', requireAuth, requireAdmin, requireSameOrigin, async (req, res) => {
   try {
     const count = await backfillPhonesToTrialSheet();
     res.json({ success: true, phonePush: count });
@@ -1635,7 +1703,7 @@ app.get('/api/diagnose-phones', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-app.post('/api/reverse-trial-phones', requireAuth, requireAdmin, async (req, res) => {
+app.post('/api/reverse-trial-phones', requireAuth, requireAdmin, requireSameOrigin, async (req, res) => {
   try {
     const sheets = getSheetsClient();
     const range = `'${assessmentSheetTab}'!A:R`;
@@ -1682,7 +1750,7 @@ app.post('/api/reverse-trial-phones', requireAuth, requireAdmin, async (req, res
   }
 });
 
-app.post('/api/clear-trial-feedback', requireAuth, requireAdmin, async (req, res) => {
+app.post('/api/clear-trial-feedback', requireAuth, requireAdmin, requireSameOrigin, async (req, res) => {
   try {
     const sheets = getSheetsClient();
     const range = `'${assessmentSheetTab}'!A:R`;
@@ -1773,7 +1841,7 @@ app.get('/api/verify-trial-mapping', requireAuth, requireAdmin, async (req, res)
   }
 });
 
-app.post('/api/backfill-trial-sheet', requireAuth, requireAdmin, async (req, res) => {
+app.post('/api/backfill-trial-sheet', requireAuth, requireAdmin, requireSameOrigin, async (req, res) => {
   try {
     const count = await backfillAssessmentFeedbackToTrialSheet();
     res.json({ success: true, backfilled: count });
@@ -1783,7 +1851,7 @@ app.post('/api/backfill-trial-sheet', requireAuth, requireAdmin, async (req, res
   }
 });
 
-app.post('/api/fix-feedback', requireAuth, requireAdmin, async (req, res) => {
+app.post('/api/fix-feedback', requireAuth, requireAdmin, requireSameOrigin, async (req, res) => {
   try {
     const result = await fixFeedbackMatching();
     res.json({ success: true, ...result });
@@ -1862,7 +1930,7 @@ app.get('/api/debug/assessment-sheet', requireAuth, requireAdmin, async (req, re
   }
 });
 
-app.post('/api/recover-assessments', requireAuth, requireAdmin, async (req, res) => {
+app.post('/api/recover-assessments', requireAuth, requireAdmin, requireSameOrigin, async (req, res) => {
   try {
     await syncSheet();
     backfillAssessments();
@@ -1880,7 +1948,7 @@ app.post('/api/recover-assessments', requireAuth, requireAdmin, async (req, res)
   }
 });
 
-app.post('/api/cleanup-wrong-links', requireAuth, requireAdmin, async (req, res) => {
+app.post('/api/cleanup-wrong-links', requireAuth, requireAdmin, requireSameOrigin, async (req, res) => {
   try {
     const assessments = db.prepare("SELECT id, tutor_name, student_name, sheet_row FROM assessments WHERE sheet_row IS NOT NULL").all();
     let unlinked = 0;
@@ -1912,7 +1980,7 @@ app.post('/api/cleanup-wrong-links', requireAuth, requireAdmin, async (req, res)
   }
 });
 
-app.post('/api/cleanup-garbage', requireAuth, requireAdmin, async (req, res) => {
+app.post('/api/cleanup-garbage', requireAuth, requireAdmin, requireSameOrigin, async (req, res) => {
   try {
     const sheets = getSheetsClient();
 
@@ -2019,28 +2087,16 @@ app.get('/api/sync-health', requireAuth, (req, res) => {
   });
 });
 
+// Production startup is read-only for the existing database. Maintenance and
+// destructive recovery operations are available only through authenticated
+// admin endpoints and are never run automatically.
 syncSheet();
-initAssessmentSheet();
-syncTutorCodesToSheet();
-// Remove bad tutor entries (leftover from original migration)
-setTimeout(() => {
-  const badNames = db.prepare("SELECT id, name FROM users WHERE role = 'teacher' AND (name LIKE '%no_tutor%' OR name LIKE '%deleted%' OR name LIKE '%unknown%' OR name IS NULL OR name = '')").all();
-  for (const b of badNames) {
-    db.prepare('DELETE FROM users WHERE id = ?').run(b.id);
-    console.log('Removed bad tutor entry:', b.name);
-  }
-}, 500);
 setTimeout(syncSheet, 5000);
 setTimeout(syncSheet, 15000);
-setTimeout(syncTutorCodesToSheet, 10000);
-setTimeout(recoverUnlinkedAssessments, 25000);
 const SYNC_INTERVAL = 30000;
 setInterval(syncSheet, SYNC_INTERVAL);
-setInterval(syncTutorCodesToSheet, 60000);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
 });
-
-

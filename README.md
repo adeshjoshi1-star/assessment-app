@@ -82,16 +82,16 @@ Seeded automatically on fresh deploy — single admin, no registration. Credenti
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/sheet-data` | All cached sheet entries (optional `?tutor=` filter). Auth required. |
-| GET | `/api/sheet-tutors` | Unique tutor names from sheet. Public. |
-| GET | `/api/sheet-tutor/:name` | Sheet entries for one tutor. Public. |
+| GET | `/api/sheet-tutors` | Unique tutor names from sheet. Authentication required. |
+| GET | `/api/sheet-tutor/:name` | Sheet entries for one tutor. Tutor/admin authentication required. |
 | PATCH | `/api/sheet-data/:row/status` | Update local status dropdown value. Auth required. |
 
 ### Assessments
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/assessments` | All submissions. Auth required. |
-| GET | `/api/assessments/by-row/:row` | Single assessment by sheet row number. Public. |
-| POST | `/api/assessments` | Create assessment. If `sheet_row` provided, also updates sheet column A to "Demo Done". Public. |
+| GET | `/api/assessments/by-row/:row` | Single assessment by sheet row number. Tutor/admin authentication required. |
+| POST | `/api/assessments` | Create assessment. If `sheet_row` is provided, also updates sheet column A to "Demo Done". Tutor/admin authentication required. |
 | GET | `/api/analytics/summary` | Aggregated stats (totals by level, language, interest, status). Auth required. |
 | GET | `/api/analytics/over-time` | Submissions per day. Auth required. |
 
@@ -139,19 +139,16 @@ Uses **better-sqlite3** stored locally as `data.db`.
 - `sheet_statuses` — Local lead status overrides (row_number → status)
 
 ### ⚠️ Important
-SQLite is stored on the Railway filesystem, which is **ephemeral**. Every deploy wipes `data.db`, losing:
-- All submitted assessments
-- All local status changes
-- The admin account (re-seeded, but assessments are gone)
+SQLite is stored at `/data/data.db` on the attached Railway persistent volume. Deployments keep the database, but the volume must be monitored and backed up.
 
-For production, switch to **PostgreSQL** (Railway provides it free).
+The volume contains submitted assessments, local status changes, user accounts, and sessions. Production startup does not run automatic data cleanup or recovery jobs.
 
 ## Sheet Rows Used
 
-Rows **2904 through ~3554** are currently in use. The 2904 cut-off is hardcoded in `server.js`:
+Rows from **2 onward** are read from the sheet. The header cut-off is implemented in `server.js`:
 
 ```js
-if (i + 1 < 2904) continue;
+if (i + 1 < 2) continue;
 ```
 
 Update this number if the sheet grows or the range needs to shift.
@@ -169,10 +166,10 @@ Assessment form UI supports English, Arabic, and French via a language dropdown 
 
 ## Known Limitations & Future Work
 
-- **No persistent database** — Switch to Railway PostgreSQL to survive deploys
+- **Persistent SQLite volume** — Monitor free capacity, configure Railway backups, and plan a managed-database migration if concurrency grows
 - **No error alerting** — Sheet sync failures are silent
-- **No rate limiting** — Public endpoints are unthrottled
+- **In-memory rate limiter** — Suitable for one instance; use a shared limiter before scaling horizontally
 - **Sheets API quota** — 60 req/min free tier; current usage is ~2/min
-- **Session in memory** — Server restart logs out all users
+- **SQLite session store** — Sessions persist on the attached volume
 - **Read-after-write** — No retry logic on sheet write-backs
 - **Auto-deploy** — Pushes to `main` deploy automatically only if GitHub integration is configured in Railway dashboard

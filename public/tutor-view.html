@@ -227,14 +227,10 @@
         const res = await fetch('/api/tutor/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code })
+          body: JSON.stringify({ code, tutor_name: selectedTutor })
         });
         const data = await res.json();
         if (data.success) {
-          if (data.name.toLowerCase() !== selectedTutor.toLowerCase()) {
-            await fetch('/api/logout', { method: 'POST' });
-            return alert('Wrong code. Please check with your admin.');
-          }
           tutorName = data.name;
           document.getElementById('tutorSelectSection').style.display = 'none';
           document.getElementById('codeSection').style.display = 'none';
