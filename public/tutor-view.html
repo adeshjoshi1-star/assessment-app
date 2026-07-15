@@ -173,12 +173,15 @@
     let tutorName = '';
     let selectedTutor = '';
     let sessionExpiryShown = false;
+    let resumeAssessmentAfterLogin = false;
 
-    function handleUnauthorized(res) {
+    function handleUnauthorized(res, options = {}) {
       if (!res || res.status !== 401) return false;
+      const preserveDraft = options.preserveDraft === true;
       tutorName = '';
       selectedTutor = '';
-      currentSheetRow = null;
+      if (!preserveDraft) currentSheetRow = null;
+      resumeAssessmentAfterLogin = preserveDraft;
       document.getElementById('tutorSelectSection').style.display = 'flex';
       document.getElementById('tutorHeader').style.display = 'none';
       document.getElementById('codeSection').style.display = 'none';
@@ -260,6 +263,11 @@
           document.getElementById('tutorHeader').style.display = 'flex';
           document.getElementById('tutorDisplayName').textContent = tutorName;
           loadDemos();
+          if (resumeAssessmentAfterLogin && currentSheetRow) {
+            resumeAssessmentAfterLogin = false;
+            document.getElementById('formModal').classList.add('active');
+            alert('You are signed in again. Your completed assessment is still here—please press Submit once more.');
+          }
         } else {
           alert('Invalid code. Please check with your admin.');
         }
@@ -543,7 +551,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        if (handleUnauthorized(res)) return;
+        if (handleUnauthorized(res, { preserveDraft: true })) return;
         const data = await res.json();
         if (data.success) {
           alert('Assessment submitted successfully! Demo status updated to "Demo Done".');

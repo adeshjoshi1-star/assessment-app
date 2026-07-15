@@ -207,6 +207,7 @@ app.use(session({
   secret: sessionSecret,
   resave: false,
   saveUninitialized: false,
+  rolling: true,
   cookie: {
     maxAge: 8 * 60 * 60 * 1000,
     httpOnly: true,
