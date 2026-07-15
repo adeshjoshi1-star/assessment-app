@@ -172,6 +172,28 @@
     let currentSheetRow = null;
     let tutorName = '';
     let selectedTutor = '';
+    let sessionExpiryShown = false;
+
+    function handleUnauthorized(res) {
+      if (!res || res.status !== 401) return false;
+      tutorName = '';
+      selectedTutor = '';
+      currentSheetRow = null;
+      document.getElementById('tutorSelectSection').style.display = 'flex';
+      document.getElementById('tutorHeader').style.display = 'none';
+      document.getElementById('codeSection').style.display = 'none';
+      document.getElementById('tutorSelect').value = '';
+      document.getElementById('codeInput').value = '';
+      document.getElementById('tableBody').innerHTML = '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-secondary)">Your session expired. Select your name and sign in again.</td></tr>';
+      document.getElementById('countBadge').textContent = '';
+      document.getElementById('formModal').classList.remove('active');
+      document.getElementById('viewModal').classList.remove('active');
+      if (!sessionExpiryShown) {
+        sessionExpiryShown = true;
+        alert('Your secure session expired or the app was updated. Please select your name and enter your tutor code again.');
+      }
+      return true;
+    }
 
     (function() {
       const container = document.getElementById('formInterestGroup');
@@ -231,6 +253,7 @@
         });
         const data = await res.json();
         if (data.success) {
+          sessionExpiryShown = false;
           tutorName = data.name;
           document.getElementById('tutorSelectSection').style.display = 'none';
           document.getElementById('codeSection').style.display = 'none';
@@ -273,6 +296,7 @@
       }
       try {
         const res = await fetch('/api/sheet-tutor/' + encodeURIComponent(name));
+        if (handleUnauthorized(res)) return;
         const entries = await res.json();
         badge.textContent = entries.length + ' demo' + (entries.length === 1 ? '' : 's');
         if (!entries.length) {
@@ -280,9 +304,12 @@
           return;
         }
         const assessmentPromises = entries.map(e =>
-          fetch('/api/assessments/by-row/' + e.row + '?tutor=' + encodeURIComponent(name)).then(r => r.json()).catch(() => null)
+          fetch('/api/assessments/by-row/' + e.row + '?tutor=' + encodeURIComponent(name))
+            .then(r => handleUnauthorized(r) ? null : r.json())
+            .catch(() => null)
         );
         const assessments = await Promise.all(assessmentPromises);
+        if (!tutorName) return;
 
         const rowClass = s => { const s2 = s.toLowerCase(); if (s2.includes('assessment pending')) return 'AssessmentPending'; if (s2.includes('cancelled')) return 'DemoCancelled'; if (s2.includes('not done')) return 'DemoNotDone'; if (s2.includes('done')) return 'DemoDone'; if (s2 === 'converted') return 'Converted'; if (s2 === 'hot') return 'Hot'; return 'New'; };
         tbody.innerHTML = entries.map((e, i) => {
@@ -325,7 +352,9 @@
       const tr = e.target.closest('tr[data-row]');
       if (!tr || e.target.tagName === 'BUTTON') return;
       const row = parseInt(tr.dataset.row);
-      const a = await fetch('/api/assessments/by-row/' + row + '?tutor=' + encodeURIComponent(tutorName)).then(r => r.json()).catch(() => null);
+      const a = await fetch('/api/assessments/by-row/' + row + '?tutor=' + encodeURIComponent(tutorName))
+        .then(r => handleUnauthorized(r) ? null : r.json()).catch(() => null);
+      if (!tutorName) return;
       if (a) {
         viewAssessmentByRow(row);
       } else {
@@ -346,6 +375,7 @@
     async function viewAssessmentByRow(row) {
       try {
         const res = await fetch('/api/assessments/by-row/' + row + '?tutor=' + encodeURIComponent(tutorName));
+        if (handleUnauthorized(res)) return;
         const a = await res.json();
         if (!a) return alert('Assessment not found.');
         document.getElementById('viewModalTitle').textContent = a.student_name + ' — ' + a.slot;
@@ -372,6 +402,7 @@
       if (!confirm('Clear this assessment and reset demo status to New?')) return;
       try {
         const res = await fetch('/api/assessments/by-row/' + row, { method: 'DELETE' });
+        if (handleUnauthorized(res)) return;
         const d = await res.json();
         if (d.success) {
           loadDemos();
@@ -387,6 +418,7 @@
     async function markNotDone(row) {
       try {
         const res = await fetch('/api/sheet-data/' + row + '/demo-not-done', { method: 'PATCH' });
+        if (handleUnauthorized(res)) return;
         const d = await res.json();
         if (d.success) {
           loadDemos();
@@ -511,6 +543,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
+        if (handleUnauthorized(res)) return;
         const data = await res.json();
         if (data.success) {
           alert('Assessment submitted successfully! Demo status updated to "Demo Done".');
