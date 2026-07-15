@@ -783,14 +783,29 @@ async function appendToSheet(data) {
   }
 }
 
-let assessmentSheetTab = 'Sheet1';
+let assessmentSheetTab = (process.env.ASSESSMENTS_SHEET_TAB || '').trim();
+
+function quoteSheetTab(title) {
+  return `'${String(title).replace(/'/g, "''")}'`;
+}
+
+async function resolveAssessmentSheetTab(sheets = getSheetsClient()) {
+  if (assessmentSheetTab) return assessmentSheetTab;
+  const meta = await sheets.spreadsheets.get({
+    spreadsheetId: ASSESSMENTS_SHEET_ID,
+    fields: 'sheets.properties.title',
+  });
+  assessmentSheetTab = meta.data.sheets?.[0]?.properties?.title || '';
+  if (!assessmentSheetTab) throw new Error('The assessment spreadsheet has no worksheet tabs');
+  console.log(`Assessment sheet tab resolved to "${assessmentSheetTab}"`);
+  return assessmentSheetTab;
+}
 
 async function initAssessmentSheet() {
   try {
     const sheets = getSheetsClient();
-    const meta = await sheets.spreadsheets.get({ spreadsheetId: ASSESSMENTS_SHEET_ID });
-    assessmentSheetTab = meta.data.sheets?.[0]?.properties?.title || 'Sheet1';
-    const range = `'${assessmentSheetTab}'!A1:R1`;
+    const tab = await resolveAssessmentSheetTab(sheets);
+    const range = `${quoteSheetTab(tab)}!A1:R1`;
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: ASSESSMENTS_SHEET_ID,
       range,
@@ -813,6 +828,7 @@ async function initAssessmentSheet() {
 async function appendAssessmentToSheet(data) {
   try {
     const sheets = getSheetsClient();
+    const tab = await resolveAssessmentSheetTab(sheets);
     const values = [[
       new Date().toISOString(),
       data.tutor_name || '',
@@ -835,7 +851,7 @@ async function appendAssessmentToSheet(data) {
     ]];
     await sheets.spreadsheets.values.append({
       spreadsheetId: ASSESSMENTS_SHEET_ID,
-      range: `'${assessmentSheetTab}'!A:R`,
+      range: `${quoteSheetTab(tab)}!A:R`,
       valueInputOption: 'USER_ENTERED',
       insertDataOption: 'INSERT_ROWS',
       requestBody: { values },
@@ -2094,6 +2110,7 @@ app.get('/api/sync-health', requireAuth, (req, res) => {
 // Production startup is read-only for the existing database. Maintenance and
 // destructive recovery operations are available only through authenticated
 // admin endpoints and are never run automatically.
+resolveAssessmentSheetTab().catch(err => console.error('Assessment sheet metadata error:', err.message));
 syncSheet();
 setTimeout(syncSheet, 5000);
 setTimeout(syncSheet, 15000);

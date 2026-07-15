@@ -34,3 +34,10 @@ test('keeps Google Sheets read and write integration', () => {
   assert.match(server, /spreadsheets\.values\.append/);
   assert.match(server, /spreadsheets\.values\.batchUpdate/);
 });
+
+test('resolves the actual assessment worksheet tab instead of assuming Sheet1', () => {
+  const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+  assert.match(server, /resolveAssessmentSheetTab/);
+  assert.match(server, /fields:\s*'sheets\.properties\.title'/);
+  assert.doesNotMatch(server, /let assessmentSheetTab = 'Sheet1'/);
+});
