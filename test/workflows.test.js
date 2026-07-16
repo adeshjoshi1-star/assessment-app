@@ -41,3 +41,10 @@ test('resolves the actual assessment worksheet tab instead of assuming Sheet1', 
   assert.match(server, /fields:\s*'sheets\.properties\.title'/);
   assert.doesNotMatch(server, /let assessmentSheetTab = 'Sheet1'/);
 });
+
+test('matches assessments by identity when Google Sheet rows are dragged', () => {
+  assert.match(server, /function assessmentIdentityKey/);
+  assert.match(server, /function assessmentMatchesEntry/);
+  assert.match(server, /if \(a && !assessmentMatchesEntry\(a, entry\)\) a = null/);
+  assert.match(server, /has_assessment: Boolean\(matchedAssessment\)/);
+});

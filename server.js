@@ -573,7 +573,7 @@ app.post('/api/assessments', requireAuth, requireSameOrigin, async (req, res) =>
       updateSheetRow(trialRow, 'Demo Done');
       db.prepare("INSERT INTO sheet_statuses (row_number, status, demo_status) VALUES (?, ?, ?) ON CONFLICT(row_number) DO UPDATE SET status = ?, demo_status = ?, updated_at = CURRENT_TIMESTAMP").run(trialRow, 'Demo Done', 'Demo Done', 'Demo Done', 'Demo Done');
       const entry = sheetDataCache.find(e => e.row === trialRow);
-      if (entry) { entry.status = 'Demo Done'; entry.demo_status = 'Demo Done'; }
+      if (entry) { entry.status = 'Demo Done'; entry.demo_status = 'Demo Done'; entry.has_assessment = true; }
       db.prepare('UPDATE assessments SET sheet_row = ? WHERE id = ?').run(trialRow, result.lastInsertRowid);
     } else {
       trialRow = await appendToSheet({
@@ -618,23 +618,24 @@ app.get('/api/assessments/by-row/:row', requireAuth, (req, res) => {
   const row = parseInt(req.params.row);
   if (!Number.isInteger(row) || row < 1) return res.status(400).json({ error: 'Invalid row' });
   if (!validateRowAccess(req, row)) return res.status(403).json({ error: 'Access denied' });
+  const entry = sheetDataCache.find(e => e.row === row);
   let a = db.prepare('SELECT * FROM assessments WHERE sheet_row = ? ORDER BY created_at DESC LIMIT 1').get(row);
-  if (!a) {
-    const entry = sheetDataCache.find(e => e.row === row);
-    if (entry && entry.tutor_name && entry.student_name) {
-      a = db.prepare(`SELECT * FROM assessments WHERE
-        LOWER(tutor_name) = LOWER(?) AND
-        LOWER(student_name) = LOWER(?) AND
-        slot = ? AND
-        date = ? AND
-        time = ?
-        ORDER BY created_at DESC LIMIT 1`).get(entry.tutor_name, entry.student_name, entry.slot || '', entry.date || '', entry.time || '');
-      if (!a) {
-        a = db.prepare(`SELECT * FROM assessments WHERE
-          LOWER(tutor_name) = LOWER(?) AND
-          LOWER(student_name) = LOWER(?)
-          ORDER BY created_at DESC LIMIT 1`).get(entry.tutor_name, entry.student_name);
-      }
+  if (a && !assessmentMatchesEntry(a, entry)) a = null;
+  if (!a && entry && entry.tutor_name && entry.student_name) {
+    const candidates = db.prepare(`
+      SELECT * FROM assessments
+      WHERE slot = ?
+      ORDER BY created_at DESC, id DESC
+    `).all(entry.slot || '');
+    a = candidates.find(candidate => assessmentMatchesEntry(candidate, entry)) || null;
+    if (!a) {
+      const sameStudentCandidates = db.prepare(`
+        SELECT * FROM assessments
+        ORDER BY created_at DESC, id DESC
+      `).all();
+      const basicKey = assessmentIdentityKey(entry, false);
+      const basicMatches = sameStudentCandidates.filter(candidate => assessmentIdentityKey(candidate, false) === basicKey);
+      if (basicMatches.length === 1) a = basicMatches[0];
     }
   }
   if (!a) return res.json(null);
@@ -918,6 +919,36 @@ async function syncTutorCodesToSheet() {
 let sheetDataCache = [];
 let lastSync = null;
 
+function normalizedStudentForMatch(name) {
+  return cleanStudentName(name).toLowerCase().replace(/\s+/g, ' ');
+}
+
+function normalizedTimeForMatch(time) {
+  return String(time || '').trim().toLowerCase().replace(/\s+/g, '');
+}
+
+function assessmentIdentityKey(item, includeSchedule = true) {
+  const parts = [
+    (normalizeTutorName(item.tutor_name) || '').toLowerCase(),
+    normalizedStudentForMatch(item.student_name),
+    String(item.slot || '').trim().toLowerCase(),
+  ];
+  if (includeSchedule) {
+    parts.push(normalizeDate(item.date || ''), normalizedTimeForMatch(item.time));
+  }
+  return parts.join('|');
+}
+
+function assessmentMatchesEntry(assessment, entry) {
+  if (!assessment || !entry) return false;
+  if (!sameTutorName(assessment.tutor_name, entry.tutor_name)) return false;
+  if (normalizedStudentForMatch(assessment.student_name) !== normalizedStudentForMatch(entry.student_name)) return false;
+  if (assessment.slot && entry.slot && String(assessment.slot).trim().toLowerCase() !== String(entry.slot).trim().toLowerCase()) return false;
+  if (assessment.date && entry.date && normalizeDate(assessment.date) !== normalizeDate(entry.date)) return false;
+  if (assessment.time && entry.time && normalizedTimeForMatch(assessment.time) !== normalizedTimeForMatch(entry.time)) return false;
+  return true;
+}
+
 async function syncSheet() {
   try {
     const sheets = getSheetsClient();
@@ -926,6 +957,25 @@ async function syncSheet() {
       range: "'Trial 2.0'!A:R",
     });
     const rows = res.data.values || [];
+    const assessments = db.prepare(`
+      SELECT id, sheet_row, tutor_name, student_name, slot, date, time, created_at
+      FROM assessments
+      ORDER BY created_at DESC, id DESC
+    `).all();
+    const assessmentByRow = new Map();
+    const assessmentByExactIdentity = new Map();
+    const assessmentsByBasicIdentity = new Map();
+    for (const assessment of assessments) {
+      if (assessment.sheet_row && !assessmentByRow.has(assessment.sheet_row)) {
+        assessmentByRow.set(assessment.sheet_row, assessment);
+      }
+      const exactKey = assessmentIdentityKey(assessment, true);
+      if (!assessmentByExactIdentity.has(exactKey)) assessmentByExactIdentity.set(exactKey, assessment);
+      const basicKey = assessmentIdentityKey(assessment, false);
+      const basicMatches = assessmentsByBasicIdentity.get(basicKey) || [];
+      basicMatches.push(assessment);
+      assessmentsByBasicIdentity.set(basicKey, basicMatches);
+    }
     const entries = [];
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
@@ -934,12 +984,38 @@ async function syncSheet() {
       const rawName = (r[8] || '').trim();
       const normalized = normalizeTutorName(rawName);
       if (!normalized) continue;
-      const ss = db.prepare('SELECT status, demo_status FROM sheet_statuses WHERE row_number = ?').get(i + 1);
+      const entry = {
+        row: i + 1,
+        slot: (r[2] || '').trim(),
+        date: (r[6] || '').trim(),
+        time: (r[7] || '').trim(),
+        tutor_name: normalized,
+        student_name: (r[9] || '').trim(),
+        age: (r[11] || '').trim(),
+        language: (r[12] || '').trim(),
+        agent_name: (r[13] || '').trim(),
+        phone: (r[17] || '').trim(),
+      };
+      const rowAssessment = assessmentByRow.get(entry.row);
+      let matchedAssessment = assessmentMatchesEntry(rowAssessment, entry) ? rowAssessment : null;
+      if (!matchedAssessment) {
+        matchedAssessment = assessmentByExactIdentity.get(assessmentIdentityKey(entry, true)) || null;
+      }
+      if (!matchedAssessment) {
+        const basicMatches = assessmentsByBasicIdentity.get(assessmentIdentityKey(entry, false)) || [];
+        if (basicMatches.length === 1) matchedAssessment = basicMatches[0];
+      }
+      // A stored row status is safe only while that row still represents the
+      // same assessment. If admins drag rows, follow the assessment identity
+      // to its new row instead of attaching the old row's status to a student.
+      const statusRow = matchedAssessment?.sheet_row || entry.row;
+      const ss = (!rowAssessment || matchedAssessment)
+        ? db.prepare('SELECT status, demo_status FROM sheet_statuses WHERE row_number = ?').get(statusRow)
+        : null;
       const sheetDemo = (r[0] || '').trim() || 'New';
       const storedDemo = ss ? ss.demo_status : null;
       let useDemo;
-      const hasAssessment = db.prepare('SELECT id FROM assessments WHERE sheet_row = ? LIMIT 1').get(i + 1);
-      if (hasAssessment) {
+      if (matchedAssessment) {
         useDemo = 'Demo Done';
       } else if (storedDemo === 'Demo Not Done') {
         useDemo = 'Demo Not Done';
@@ -951,18 +1027,10 @@ async function syncSheet() {
         useDemo = 'New';
       }
       entries.push({
-        row: i + 1,
+        ...entry,
         demo_status: useDemo,
-        slot: (r[2] || '').trim(),
-        date: (r[6] || '').trim(),
-        time: (r[7] || '').trim(),
-        tutor_name: normalized,
-        student_name: (r[9] || '').trim(),
-        age: (r[11] || '').trim(),
-        language: (r[12] || '').trim(),
-        agent_name: (r[13] || '').trim(),
-        phone: (r[17] || '').trim(),
         status: ss ? ss.status : 'New',
+        has_assessment: Boolean(matchedAssessment),
       });
     }
     // Keep production sync read-only: adding tutors remains an explicit admin action.
@@ -1110,15 +1178,7 @@ app.get('/api/sheet-tutor/:name', requireAuth, (req, res) => {
       return words.some(w => w.length > 1 && sn.includes(w));
     });
   }
-  const rowsWithAssessments = new Set(
-    db.prepare('SELECT DISTINCT sheet_row FROM assessments WHERE sheet_row IS NOT NULL')
-      .all()
-      .map(a => a.sheet_row)
-  );
-  const safe = entries.map(({ phone, ...rest }) => ({
-    ...rest,
-    has_assessment: rowsWithAssessments.has(rest.row),
-  }));
+  const safe = entries.map(({ phone, ...rest }) => rest);
   res.json(safe.sort((a, b) => b.row - a.row));
 });
 
