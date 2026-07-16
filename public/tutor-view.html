@@ -28,12 +28,7 @@
         <i class="fas fa-clipboard-list"></i> AssessPro
       </div>
       <nav class="sidebar-nav">
-        <a href="dashboard.html"><i class="fas fa-list"></i> Submissions</a>
         <a href="tutor-view.html" class="active"><i class="fas fa-user-graduate"></i> Tutor Demo Assessment</a>
-        <a href="admin-tutors.html"><i class="fas fa-users-cog"></i> Manage Tutors</a>
-        <a href="completed.html"><i class="fas fa-check-circle"></i> Demo Completed</a>
-        <a href="conversion.html"><i class="fas fa-percent"></i> Conversion Rate</a>
-        <a href="analytics.html"><i class="fas fa-chart-pie"></i> Analytics</a>
       </nav>
       <div class="sidebar-footer">
         <a href="index.html"><i class="fas fa-home"></i> Home</a>
@@ -62,7 +57,7 @@
 
         <div id="codeSection" style="margin-bottom:16px;display:none;gap:8px;align-items:center;flex-wrap:wrap;padding:16px;background:var(--surface);border-radius:var(--radius-sm);box-shadow:var(--shadow)">
           <label style="font-size:0.9rem;color:var(--text-secondary)"><strong>Your Code (<span id="codeTutorName"></span>):</strong></label>
-          <input type="text" id="codeInput" placeholder="e.g. 0025" maxlength="4" style="padding:8px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-size:1rem;min-width:120px;font-family:monospace;letter-spacing:2px;font-weight:700;text-align:center">
+          <input type="text" id="codeInput" placeholder="e.g. 0025" maxlength="32" autocomplete="one-time-code" style="padding:8px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-size:1rem;min-width:120px;font-family:monospace;letter-spacing:2px;font-weight:700;text-align:center">
           <button class="btn btn-primary" id="loginBtn"><i class="fas fa-sign-in-alt"></i> Login</button>
           <span id="countBadge" style="font-size:0.85rem;color:var(--text-secondary);margin-left:8px"></span>
           <button class="btn btn-secondary btn-sm" id="backBtn" style="margin-left:4px"><i class="fas fa-arrow-left"></i> Back</button>
@@ -176,7 +171,7 @@
     let resumeAssessmentAfterLogin = false;
 
     function handleUnauthorized(res, options = {}) {
-      if (!res || res.status !== 401) return false;
+      if (!res || (res.status !== 401 && res.status !== 403)) return false;
       const preserveDraft = options.preserveDraft === true;
       tutorName = '';
       selectedTutor = '';
@@ -193,7 +188,9 @@
       document.getElementById('viewModal').classList.remove('active');
       if (!sessionExpiryShown) {
         sessionExpiryShown = true;
-        alert('Your secure session expired or the app was updated. Please select your name and enter your tutor code again.');
+        alert(res.status === 403
+          ? 'Your tutor access could not be verified. Please select your name and enter your code again.'
+          : 'Your secure session expired or the app was updated. Please select your name and enter your tutor code again.');
       }
       return true;
     }
@@ -269,10 +266,10 @@
             alert('You are signed in again. Your completed assessment is still here—please press Submit once more.');
           }
         } else {
-          alert('Invalid code. Please check with your admin.');
+          alert(data.error || 'Invalid code. Please check with your admin.');
         }
       } catch (err) {
-        alert('Server error');
+        alert('The portal could not connect. Please check your internet connection and try again.');
       }
     }
 
@@ -305,23 +302,19 @@
       try {
         const res = await fetch('/api/sheet-tutor/' + encodeURIComponent(name));
         if (handleUnauthorized(res)) return;
+        if (!res.ok) {
+          const error = await res.json().catch(() => ({}));
+          throw new Error(error.error || `Unable to load demos (${res.status})`);
+        }
         const entries = await res.json();
         badge.textContent = entries.length + ' demo' + (entries.length === 1 ? '' : 's');
         if (!entries.length) {
           tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-secondary)">No demos assigned to you yet.</td></tr>';
           return;
         }
-        const assessmentPromises = entries.map(e =>
-          fetch('/api/assessments/by-row/' + e.row + '?tutor=' + encodeURIComponent(name))
-            .then(r => handleUnauthorized(r) ? null : r.json())
-            .catch(() => null)
-        );
-        const assessments = await Promise.all(assessmentPromises);
-        if (!tutorName) return;
-
         const rowClass = s => { const s2 = s.toLowerCase(); if (s2.includes('assessment pending')) return 'AssessmentPending'; if (s2.includes('cancelled')) return 'DemoCancelled'; if (s2.includes('not done')) return 'DemoNotDone'; if (s2.includes('done')) return 'DemoDone'; if (s2 === 'converted') return 'Converted'; if (s2 === 'hot') return 'Hot'; return 'New'; };
-        tbody.innerHTML = entries.map((e, i) => {
-          const a = assessments[i];
+        tbody.innerHTML = entries.map((e) => {
+          const hasAssessment = e.has_assessment === true;
           const esc = s => (s || '').replace(/'/g, "\\'");
           const escAttr = s => (s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
           const row = e.row;
@@ -331,7 +324,7 @@
           const dataAttrs = `data-row="${row}" data-tutor="${escAttr(e.tutor_name)}" data-student="${escAttr(e.student_name)}" data-slot="${escAttr(e.slot)}" data-date="${escAttr(e.date)}" data-time="${escAttr(e.time)}" data-age="${escAttr(e.age)}" data-lang="${escAttr(e.language)}"`;
 
           // New rows
-          const btn = a
+          const btn = hasAssessment
             ? `<button class="btn btn-secondary" style="padding:4px 10px;font-size:0.8rem" data-row="${row}" onclick="viewAssessmentByRow(${row})">View</button>`
             : st === 'New'
               ? `<button class="btn btn-primary assess-btn" style="padding:4px 10px;font-size:0.8rem">Assess</button>`
@@ -341,7 +334,7 @@
             ? `<button class="btn-big-not-done" onclick="event.stopPropagation();markNotDone(${row})">✕ Demo Not Done</button>`
             : `<span class="status-badge ${rowClass(st)}">${st}</span>`;
 
-          return `<tr style="cursor:${a || st === 'New' ? 'pointer' : 'default'}" ${dataAttrs} class="row-${rowClass(st)}">
+          return `<tr style="cursor:${hasAssessment || st === 'New' ? 'pointer' : 'default'}" ${dataAttrs} class="row-${rowClass(st)}">
             <td>${e.time || '-'}</td>
             <td>${e.date || '-'}</td>
             <td>${e.slot || '-'}</td>

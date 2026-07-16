@@ -110,8 +110,7 @@
   </div>
 
   <script>
-    // Check auth
-    (async () => {
+    async function initializeAdminDashboard() {
       try {
         const res = await fetch('/api/me');
         const data = await res.json();
@@ -119,11 +118,18 @@
           window.location.href = 'login.html';
           return;
         }
+        if (data.role !== 'admin') {
+          window.location.href = 'tutor-view.html';
+          return;
+        }
         document.getElementById('userName').textContent = data.name;
+        await loadTutors();
+        await loadSheetData();
+        setInterval(loadSheetData, 30000);
       } catch {
         window.location.href = 'login.html';
       }
-    })();
+    }
 
     async function loadTutors() {
       try {
@@ -133,8 +139,6 @@
         sel.innerHTML = '<option value="">All Tutors</option>' + tutors.map(t => `<option value="${t}">${t}</option>`).join('');
       } catch (e) {}
     }
-    loadTutors();
-
     document.getElementById('tutorFilter').addEventListener('change', loadSheetData);
     document.getElementById('dateFrom').addEventListener('change', renderFilteredSheet);
     document.getElementById('dateTo').addEventListener('change', renderFilteredSheet);
@@ -319,17 +323,26 @@
         const filter = document.getElementById('tutorFilter').value;
         const url = filter ? '/api/sheet-data?tutor=' + encodeURIComponent(filter) : '/api/sheet-data';
         const res = await fetch(url);
+        if (res.status === 401) {
+          window.location.href = 'login.html';
+          return;
+        }
+        if (res.status === 403) {
+          window.location.href = 'tutor-view.html';
+          return;
+        }
+        if (!res.ok) throw new Error(`Sheet data request failed (${res.status})`);
         const data = await res.json();
-        document.getElementById('sheetSyncInfo').textContent = data.lastSync ? 'Last sync: ' + new Date(data.lastSync + 'Z').toLocaleTimeString() : '';
+        document.getElementById('sheetSyncInfo').textContent = data.lastSync ? 'Last sync: ' + new Date(data.lastSync).toLocaleTimeString() : 'Waiting for first sync…';
         cachedSheetData = { entries: data.entries || [], lastSync: data.lastSync };
         renderFilteredSheet();
       } catch (err) {
         console.error('Failed to load sheet data', err);
+        document.getElementById('sheetSyncInfo').textContent = 'Unable to display sync status. Retrying…';
       }
     }
 
-    loadSheetData();
-    setInterval(loadSheetData, 30000);
+    initializeAdminDashboard();
 
     // Demo count widget
     document.getElementById('demoCountDate').addEventListener('change', async (e) => {

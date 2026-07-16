@@ -236,7 +236,11 @@ function requireSameOrigin(req, res, next) {
 const loginAttempts = new Map();
 function loginRateLimit(req, res, next) {
   const now = Date.now();
-  const key = req.ip || req.socket.remoteAddress || 'unknown';
+  const identity = String(req.body?.tutor_name || req.body?.email || 'unknown')
+    .trim()
+    .toLowerCase()
+    .slice(0, 100);
+  const key = `${req.ip || req.socket.remoteAddress || 'unknown'}:${identity}`;
   const recent = (loginAttempts.get(key) || []).filter(t => now - t < 15 * 60 * 1000);
   if (recent.length >= 10) return res.status(429).json({ error: 'Too many login attempts. Try again later.' });
   recent.push(now);
@@ -1106,7 +1110,15 @@ app.get('/api/sheet-tutor/:name', requireAuth, (req, res) => {
       return words.some(w => w.length > 1 && sn.includes(w));
     });
   }
-  const safe = entries.map(({ phone, ...rest }) => rest);
+  const rowsWithAssessments = new Set(
+    db.prepare('SELECT DISTINCT sheet_row FROM assessments WHERE sheet_row IS NOT NULL')
+      .all()
+      .map(a => a.sheet_row)
+  );
+  const safe = entries.map(({ phone, ...rest }) => ({
+    ...rest,
+    has_assessment: rowsWithAssessments.has(rest.row),
+  }));
   res.json(safe.sort((a, b) => b.row - a.row));
 });
 
