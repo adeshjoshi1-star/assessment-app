@@ -47,4 +47,12 @@ test('matches assessments by identity when Google Sheet rows are dragged', () =>
   assert.match(server, /function assessmentMatchesEntry/);
   assert.match(server, /if \(a && !assessmentMatchesEntry\(a, entry\)\) a = null/);
   assert.match(server, /has_assessment: Boolean\(matchedAssessment\)/);
+  assert.match(server, /currentEntry = assessmentMatchesEntry/);
+  assert.match(server, /const sheetRowValue = currentEntry\?\.row/);
+});
+
+test('keeps the last complete cache during a temporary large sheet drag', () => {
+  assert.match(server, /function shouldHoldSheetSnapshot/);
+  assert.match(server, /LARGE_SHEET_DROP_CONFIRMATIONS = 3/);
+  assert.match(server, /possible row-drag snapshot/);
 });

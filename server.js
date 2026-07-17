@@ -544,13 +544,22 @@ app.post('/api/assessments', requireAuth, requireSameOrigin, async (req, res) =>
       return res.status(403).json({ error: 'Tutor access denied' });
     }
     const requestedRow = Number.parseInt(sheet_row, 10);
-    if (req.session.role === 'teacher' && (!Number.isInteger(requestedRow) || !validateRowAccess(req, requestedRow))) {
+    const requestedEntry = {
+      tutor_name, student_name, slot, date, time,
+    };
+    const entryAtRequestedRow = Number.isInteger(requestedRow)
+      ? sheetDataCache.find(e => e.row === requestedRow)
+      : null;
+    const currentEntry = assessmentMatchesEntry(requestedEntry, entryAtRequestedRow)
+      ? entryAtRequestedRow
+      : sheetDataCache.find(e => assessmentMatchesEntry(requestedEntry, e));
+    if (req.session.role === 'teacher' && (!currentEntry || !canAccessTutor(req, currentEntry.tutor_name))) {
       return res.status(403).json({ error: 'This demo is not assigned to you' });
     }
     const stmt = db.prepare(`INSERT INTO assessments
       (user_id, tutor_name, phone, slot, student_name, student_age, language, level, topics_known, topics_covered, start_topic, revision_topics, feedback, interest_level, additional_remarks, date, time, sheet_row)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-    const sheetRowValue = (sheet_row !== undefined && sheet_row !== null && sheet_row !== '') ? parseInt(sheet_row) : null;
+    const sheetRowValue = currentEntry?.row || ((sheet_row !== undefined && sheet_row !== null && sheet_row !== '') ? parseInt(sheet_row) : null);
     let resolvedPhone = phone;
     let resolvedSheetRow = sheetRowValue;
     if (!resolvedSheetRow) {
@@ -918,6 +927,35 @@ async function syncTutorCodesToSheet() {
 
 let sheetDataCache = [];
 let lastSync = null;
+let pendingLargeSheetDrop = null;
+
+const LARGE_SHEET_DROP_RATIO = 0.7;
+const LARGE_SHEET_DROP_CONFIRMATIONS = 3;
+
+function shouldHoldSheetSnapshot(previousCount, nextCount) {
+  if (previousCount < 100 || nextCount >= previousCount * LARGE_SHEET_DROP_RATIO) {
+    pendingLargeSheetDrop = null;
+    return false;
+  }
+
+  const closeToPending = pendingLargeSheetDrop
+    && Math.abs(pendingLargeSheetDrop.count - nextCount) <= Math.max(5, Math.ceil(nextCount * 0.02));
+  if (closeToPending) {
+    pendingLargeSheetDrop.confirmations += 1;
+    pendingLargeSheetDrop.count = nextCount;
+  } else {
+    pendingLargeSheetDrop = { count: nextCount, confirmations: 1 };
+  }
+
+  if (pendingLargeSheetDrop.confirmations >= LARGE_SHEET_DROP_CONFIRMATIONS) {
+    console.warn(`Sheet row drop confirmed after ${pendingLargeSheetDrop.confirmations} reads: ${previousCount} -> ${nextCount}`);
+    pendingLargeSheetDrop = null;
+    return false;
+  }
+
+  console.warn(`Holding previous sheet cache after a possible row-drag snapshot: ${previousCount} -> ${nextCount} (${pendingLargeSheetDrop.confirmations}/${LARGE_SHEET_DROP_CONFIRMATIONS})`);
+  return true;
+}
 
 function normalizedStudentForMatch(name) {
   return cleanStudentName(name).toLowerCase().replace(/\s+/g, ' ');
@@ -1037,6 +1075,12 @@ async function syncSheet() {
     const allTeachers = db.prepare("SELECT id, name, code FROM users WHERE role = 'teacher' AND code IS NOT NULL AND code != ''").all();
     const knownTutorNames = new Set(allTeachers.map(t => (normalizeTutorName(t.name) || '').toLowerCase()));
     const filtered = entries.filter(e => knownTutorNames.has((normalizeTutorName(e.tutor_name) || '').toLowerCase()));
+    if (shouldHoldSheetSnapshot(sheetDataCache.length, filtered.length)) {
+      // A large drag/cut operation can briefly expose only part of the sheet.
+      // Keep the last complete cache so tutors can still log in and submit.
+      lastSync = new Date().toISOString();
+      return;
+    }
     sheetDataCache = filtered;
     lastSync = new Date().toISOString();
     console.log(`Sheet synced: ${filtered.length} entries (filtered from ${entries.length})`);
