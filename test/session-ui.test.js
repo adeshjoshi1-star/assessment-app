@@ -19,6 +19,8 @@ test('preserves an assessment draft when submission needs a fresh login', () => 
 test('loads tutor assignments without one request per historical sheet row', () => {
   const tutorView = fs.readFileSync(path.join(root, 'public', 'tutor-view.html'), 'utf8');
   assert.match(tutorView, /has_assessment/);
+  assert.match(tutorView, /st === 'New' && !hasAssessment/);
+  assert.doesNotMatch(tutorView, /st === 'New' && !a\b/);
   assert.doesNotMatch(tutorView, /const assessmentPromises = entries\.map/);
 });
 
