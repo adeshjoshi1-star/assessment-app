@@ -227,6 +227,7 @@ Production requires:
 
 - `SESSION_SECRET` for secure sessions.
 - `GOOGLE_CREDENTIALS_JSON` for Google API authentication.
+- `SOURCE_SPREADSHEET_ID` for the spreadsheet containing the `Trial 2.0` operational source tab.
 - `ASSESSMENTS_SHEET_ID` when the separate assessment sheet is used.
 - Railway-provided service and volume variables.
 - `ALLOW_DB_BOOTSTRAP=false` to prevent deployment from bootstrapping or migrating the existing production database.

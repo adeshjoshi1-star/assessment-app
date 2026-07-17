@@ -722,7 +722,7 @@ app.get('/api/analytics/over-time', requireAuth, (req, res) => {
 
 // Google Sheets integration
 const { google } = require('googleapis');
-const SPREADSHEET_ID = '1nYvdZwZgqymw89waZXr1gyOVgPtmPN9CuAzQWx5y8Mg';
+const SPREADSHEET_ID = process.env.SOURCE_SPREADSHEET_ID || '1xxq44ok6l6E0OHQ5-VK8sqMuIwxh1e9G2dbTlnAubF0';
 const ASSESSMENTS_SHEET_ID = process.env.ASSESSMENTS_SHEET_ID || '1ZjfrqObcRpqYOKvnDBPmiM1H4jQCJXuS01oSLot7_zY';
 
 let CREDENTIALS_PATH = path.join(__dirname, 'google-credentials.json');

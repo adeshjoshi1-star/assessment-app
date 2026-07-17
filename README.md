@@ -123,10 +123,13 @@ railway up --detach
 When GitHub repo is connected in Railway dashboard → Settings → GitHub → Auto Deploy on `main` branch, every push to `main` triggers a build automatically.
 
 ### Credentials on Railway
-The `GOOGLE_CREDENTIALS_JSON` environment variable must be set:
+The `GOOGLE_CREDENTIALS_JSON` environment variable must be set. The optional
+`SOURCE_SPREADSHEET_ID` variable selects the spreadsheet containing the
+`Trial 2.0` source tab, allowing a rollback without changing application code.
 
 ```bash
 cat google-credentials.json | railway var set GOOGLE_CREDENTIALS_JSON --stdin
+railway var set SOURCE_SPREADSHEET_ID=1xxq44ok6l6E0OHQ5-VK8sqMuIwxh1e9G2dbTlnAubF0
 ```
 
 ## Database

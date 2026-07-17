@@ -35,6 +35,12 @@ test('keeps Google Sheets read and write integration', () => {
   assert.match(server, /spreadsheets\.values\.batchUpdate/);
 });
 
+test('uses the configured operational source spreadsheet', () => {
+  assert.match(server, /process\.env\.SOURCE_SPREADSHEET_ID/);
+  assert.match(server, /1xxq44ok6l6E0OHQ5-VK8sqMuIwxh1e9G2dbTlnAubF0/);
+  assert.match(server, /range: "'Trial 2\.0'!A:R"/);
+});
+
 test('resolves the actual assessment worksheet tab instead of assuming Sheet1', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   assert.match(server, /resolveAssessmentSheetTab/);
