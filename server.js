@@ -556,11 +556,8 @@ app.post('/api/assessments', requireAuth, requireSameOrigin, async (req, res) =>
     if (req.session.role === 'teacher' && (!currentEntry || !canAccessTutor(req, currentEntry.tutor_name))) {
       return res.status(403).json({ error: 'This demo is not assigned to you' });
     }
-    const stmt = db.prepare(`INSERT INTO assessments
-      (user_id, tutor_name, phone, slot, student_name, student_age, language, level, topics_known, topics_covered, start_topic, revision_topics, feedback, interest_level, additional_remarks, date, time, sheet_row)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     const sheetRowValue = currentEntry?.row || ((sheet_row !== undefined && sheet_row !== null && sheet_row !== '') ? parseInt(sheet_row) : null);
-    let resolvedPhone = phone;
+    let resolvedPhone = phone || currentEntry?.phone || '';
     let resolvedSheetRow = sheetRowValue;
     if (!resolvedSheetRow) {
       const cached = sheetDataCache.find(e => e.tutor_name.toLowerCase() === (tutor_name || '').toLowerCase() && e.student_name.toLowerCase() === (student_name || '').toLowerCase() && e.slot === slot);
@@ -570,6 +567,27 @@ app.post('/api/assessments', requireAuth, requireSameOrigin, async (req, res) =>
       const cached = resolvedSheetRow ? sheetDataCache.find(e => e.row === resolvedSheetRow) : sheetDataCache.find(e => e.tutor_name.toLowerCase() === (tutor_name || '').toLowerCase() && e.student_name.toLowerCase() === (student_name || '').toLowerCase());
       if (cached && cached.phone) resolvedPhone = cached.phone;
     }
+    const verifiedTrialEntry = await findPhoneVerifiedTrialEntry({
+      expectedPhone: resolvedPhone,
+      requestedRow: resolvedSheetRow,
+      requestedEntry,
+    });
+    if (!verifiedTrialEntry) {
+      return res.status(409).json({
+        error: 'The phone number in Column R could not be verified for this demo. The Sheet was not changed; please sync and try again.',
+      });
+    }
+    if (verifiedTrialEntry.feedbackPresent) {
+      return res.status(409).json({
+        error: 'Feedback already exists in Column T for this verified demo. Nothing was overwritten.',
+      });
+    }
+    resolvedSheetRow = verifiedTrialEntry.row;
+    resolvedPhone = verifiedTrialEntry.phone;
+
+    const stmt = db.prepare(`INSERT INTO assessments
+      (user_id, tutor_name, phone, slot, student_name, student_age, language, level, topics_known, topics_covered, start_topic, revision_topics, feedback, interest_level, additional_remarks, date, time, sheet_row)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     const result = stmt.run(
       req.session.userId, tutor_name || '', resolvedPhone, slot || '', student_name || '', student_age || '', language || '', level || '',
       JSON.stringify(topics_known || []), JSON.stringify(topics_covered || []),
@@ -577,35 +595,29 @@ app.post('/api/assessments', requireAuth, requireSameOrigin, async (req, res) =>
       feedback, interest_level || 0, additional_remarks || '', date || '', time || '',
       resolvedSheetRow
     );
-    let trialRow = resolvedSheetRow;
-    if (trialRow) {
-      updateSheetRow(trialRow, 'Demo Done');
-      db.prepare("INSERT INTO sheet_statuses (row_number, status, demo_status) VALUES (?, ?, ?) ON CONFLICT(row_number) DO UPDATE SET status = ?, demo_status = ?, updated_at = CURRENT_TIMESTAMP").run(trialRow, 'Demo Done', 'Demo Done', 'Demo Done', 'Demo Done');
-      const entry = sheetDataCache.find(e => e.row === trialRow);
-      if (entry) { entry.status = 'Demo Done'; entry.demo_status = 'Demo Done'; entry.has_assessment = true; }
-      db.prepare('UPDATE assessments SET sheet_row = ? WHERE id = ?').run(trialRow, result.lastInsertRowid);
-    } else {
-      trialRow = await appendToSheet({
-        demo_status: 'Demo Done',
-        slot, date, time, tutor_name, student_name,
-        age: student_age, language, phone: resolvedPhone,
-      });
-      if (trialRow) {
-        db.prepare('UPDATE assessments SET sheet_row = ? WHERE id = ?').run(trialRow, result.lastInsertRowid);
-        db.prepare("INSERT INTO sheet_statuses (row_number, status, demo_status) VALUES (?, ?, ?) ON CONFLICT(row_number) DO UPDATE SET status = ?, demo_status = ?, updated_at = CURRENT_TIMESTAMP").run(trialRow, 'Demo Done', 'Demo Done', 'Demo Done', 'Demo Done');
-      }
-    }
-    if (trialRow) {
-      writeAssessmentFeedbackToTrialSheet(trialRow, { feedback, topics_known, topics_covered, start_topic, additional_remarks });
-    }
-    appendAssessmentToSheet({
+    const trialRow = resolvedSheetRow;
+    db.prepare("INSERT INTO sheet_statuses (row_number, status, demo_status) VALUES (?, ?, ?) ON CONFLICT(row_number) DO UPDATE SET status = ?, demo_status = ?, updated_at = CURRENT_TIMESTAMP").run(trialRow, 'Demo Done', 'Demo Done', 'Demo Done', 'Demo Done');
+    const entry = sheetDataCache.find(e => e.row === trialRow);
+    if (entry) { entry.status = 'Demo Done'; entry.demo_status = 'Demo Done'; entry.has_assessment = true; }
+    db.prepare('UPDATE assessments SET sheet_row = ? WHERE id = ?').run(trialRow, result.lastInsertRowid);
+
+    const [demoDoneWritten, feedbackWritten, assessmentLogged] = await Promise.all([
+      retrySheetOperation(() => updateSheetRow(trialRow, 'Demo Done')),
+      retrySheetOperation(() => writeAssessmentFeedbackToTrialSheet(trialRow, { feedback, topics_known, topics_covered, start_topic, additional_remarks })),
+      retrySheetOperation(() => appendAssessmentToSheet({
       tutor_name, phone: resolvedPhone, slot, student_name,
       student_age, language, level,
       topics_known, topics_covered, start_topic,
       revision_topics, feedback, interest_level,
       additional_remarks, date, time, sheet_row: resolvedSheetRow,
+      })),
+    ]);
+    res.json({
+      success: true,
+      sheetSync: demoDoneWritten && feedbackWritten,
+      assessmentLogSync: assessmentLogged,
+      warning: demoDoneWritten && feedbackWritten ? undefined : 'Assessment saved, but one or more Sheet updates are still pending.',
     });
-    res.json({ success: true });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -740,6 +752,55 @@ function getSheetsClient() {
   return google.sheets({ version: 'v4', auth });
 }
 
+function normalizePhoneForMatch(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+async function findPhoneVerifiedTrialEntry({ expectedPhone, requestedRow, requestedEntry }) {
+  const expected = normalizePhoneForMatch(expectedPhone);
+  if (!expected) return null;
+  try {
+    const sheets = getSheetsClient();
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: "'Trial 2.0'!A:X",
+    });
+    const rows = response.data.values || [];
+    const candidates = [];
+    for (let index = 1; index < rows.length; index += 1) {
+      const row = rows[index];
+      if (normalizePhoneForMatch(row[17]) !== expected) continue;
+      candidates.push({
+        row: index + 1,
+        phone: String(row[17] || '').trim(),
+        feedbackPresent: Boolean(String(row[19] || '').trim()),
+        entry: {
+          tutor_name: (row[8] || '').trim(),
+          student_name: (row[9] || '').trim(),
+          slot: (row[2] || '').trim(),
+          date: (row[6] || '').trim(),
+          time: (row[7] || '').trim(),
+        },
+      });
+    }
+    const identityMatches = candidates.filter(candidate => assessmentMatchesEntry(requestedEntry, candidate.entry));
+    const requestedMatch = identityMatches.find(candidate => candidate.row === requestedRow);
+    if (requestedMatch) return requestedMatch;
+    return identityMatches.length === 1 ? identityMatches[0] : null;
+  } catch (error) {
+    console.error('Column R verification failed:', error.message);
+    return null;
+  }
+}
+
+async function retrySheetOperation(operation, attempts = 3) {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    if (await operation()) return true;
+    if (attempt < attempts) await new Promise(resolve => setTimeout(resolve, attempt * 500));
+  }
+  return false;
+}
+
 async function updateSheetRow(row, status) {
   if (!row) { console.error('updateSheetRow called with invalid row:', row); return; }
   try {
@@ -751,49 +812,10 @@ async function updateSheetRow(row, status) {
       requestBody: { values: [[status]] },
     });
     console.log(`Sheet row ${row} updated to "${status}"`);
+    return true;
   } catch (err) {
     console.error(`Sheet update error for row ${row}:`, err.message);
-  }
-}
-
-async function appendToSheet(data) {
-  try {
-    const sheets = getSheetsClient();
-    const values = [[
-      data.demo_status || 'Demo Done',
-      '',
-      data.slot || '',
-      '', '', '',
-      data.date || '',
-      data.time || '',
-      data.tutor_name || '',
-      data.student_name || '',
-      '',
-      data.age || '',
-      data.language || '',
-      data.agent_name || '',
-      '', '', '',
-      data.phone || ''
-    ]];
-    const res = await sheets.spreadsheets.values.append({
-      spreadsheetId: SPREADSHEET_ID,
-      range: "'Trial 2.0'!A:R",
-      valueInputOption: 'USER_ENTERED',
-      insertDataOption: 'INSERT_ROWS',
-      requestBody: { values },
-    });
-    const range = res.data?.updates?.updatedRange || '';
-    const m = range.match(/R(\d+)$/);
-    const row = m ? parseInt(m[1]) : null;
-    if (row) {
-      console.log(`Appended row ${row} to Trial 2.0 sheet for ${data.tutor_name}/${data.student_name}`);
-    } else {
-      console.warn('Sheet append completed but could not parse row number from range:', range);
-    }
-    return row;
-  } catch (err) {
-    console.error('Sheet append error:', err.message);
-    return null;
+    return false;
   }
 }
 
@@ -871,8 +893,10 @@ async function appendAssessmentToSheet(data) {
       requestBody: { values },
     });
     console.log('Assessment appended to sheet for', data.student_name);
+    return true;
   } catch (err) {
     console.error('Assessment sheet append error:', err.message);
+    return false;
   }
 }
 
@@ -887,8 +911,10 @@ async function writeAssessmentFeedbackToTrialSheet(row, data) {
       valueInputOption: 'USER_ENTERED',
       requestBody: { values: vals },
     });
+    return true;
   } catch (err) {
     console.error(`Failed writing feedback to Trial 2.0 row ${row}:`, err.message);
+    return false;
   }
 }
 
@@ -1660,55 +1686,8 @@ async function fixFeedbackMatching() {
 }
 
 async function backfillPhonesToTrialSheet() {
-  try {
-    const sheets = getSheetsClient();
-    const range = `'${assessmentSheetTab}'!A:R`;
-    const res = await sheets.spreadsheets.values.get({
-      spreadsheetId: ASSESSMENTS_SHEET_ID,
-      range,
-    });
-    const rows = res.data.values || [];
-    if (rows.length < 2) { console.log('Assessment sheet has no data rows'); return 0; }
-    let updated = 0;
-    let checked = 0;
-    let matched = 0;
-    for (let i = 1; i < rows.length; i++) {
-      const row = rows[i];
-      const phone = (row[2] || '').trim();
-      if (!phone) continue;
-      const tutor = (row[1] || '').trim();
-      const student = cleanStudentName(row[3] || '').trim();
-      if (!tutor || !student) continue;
-      checked++;
-      const cacheEntry = sheetDataCache.find(e =>
-        e.tutor_name.toLowerCase() === tutor.toLowerCase() &&
-        cleanStudentName(e.student_name).toLowerCase() === student.toLowerCase()
-      );
-      if (!cacheEntry) continue;
-      matched++;
-      const existing = (cacheEntry.phone || '').trim();
-      if (existing === phone) continue;
-      if (existing) continue;
-      try {
-        await sheets.spreadsheets.values.update({
-          spreadsheetId: SPREADSHEET_ID,
-          range: `'Trial 2.0'!R${cacheEntry.row}`,
-          valueInputOption: 'USER_ENTERED',
-          requestBody: { values: [[phone]] },
-        });
-        const currentEntry = sheetDataCache.find(e => e.row === cacheEntry.row);
-        if (currentEntry) currentEntry.phone = phone;
-        updated++;
-      } catch (e) {
-        console.error(`Failed updating Trial 2.0 row ${cacheEntry.row} phone:`, e.message);
-      }
-    }
-    console.log(`Phone push to Trial 2.0: checked=${checked}, matched=${matched}, updated=${updated}`);
-    return updated;
-  } catch (err) {
-    console.error('Phone push to Trial 2.0 error:', err.message);
-    return -1;
-  }
+  console.warn('Phone writes to Trial 2.0 Column R are permanently disabled');
+  return 0;
 }
 
 app.post('/api/backfill-phones-to-trial', requireAuth, requireAdmin, requireSameOrigin, async (req, res) => {
@@ -1840,50 +1819,7 @@ app.get('/api/diagnose-phones', requireAuth, requireAdmin, async (req, res) => {
 });
 
 app.post('/api/reverse-trial-phones', requireAuth, requireAdmin, requireSameOrigin, async (req, res) => {
-  try {
-    const sheets = getSheetsClient();
-    const range = `'${assessmentSheetTab}'!A:R`;
-    const asResult = await sheets.spreadsheets.values.get({
-      spreadsheetId: ASSESSMENTS_SHEET_ID,
-      range,
-    });
-    const asRows = asResult.data.values || [];
-    const toClear = [];
-    for (let i = 1; i < asRows.length; i++) {
-      const row = asRows[i];
-      const phone = (row[2] || '').trim();
-      const tutor = (row[1] || '').trim();
-      const student = cleanStudentName(row[3] || '').trim();
-      if (!phone || !tutor || !student) continue;
-      const ce = sheetDataCache.find(e =>
-        e.tutor_name.toLowerCase() === tutor.toLowerCase() &&
-        cleanStudentName(e.student_name).toLowerCase() === student.toLowerCase()
-      );
-      if (!ce) continue;
-      if ((ce.phone || '').trim() !== phone) continue;
-      toClear.push(ce.row);
-    }
-    const unique = [...new Set(toClear)];
-    let cleared = 0;
-    for (const r of unique) {
-      try {
-        await sheets.spreadsheets.values.update({
-          spreadsheetId: SPREADSHEET_ID,
-          range: `'Trial 2.0'!R${r}`,
-          valueInputOption: 'USER_ENTERED',
-          requestBody: { values: [['']] },
-        });
-        const entry = sheetDataCache.find(e => e.row === r);
-        if (entry) entry.phone = '';
-        cleared++;
-      } catch (e) {
-        console.error(`Failed to clear Trial 2.0 row ${r} phone:`, e.message);
-      }
-    }
-    res.json({ success: true, cleared, uniqueRows: unique.length });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  res.status(410).json({ error: 'Column R is read-only and cannot be changed by the portal' });
 });
 
 app.post('/api/clear-trial-feedback', requireAuth, requireAdmin, requireSameOrigin, async (req, res) => {
@@ -2162,12 +2098,12 @@ app.post('/api/cleanup-garbage', requireAuth, requireAdmin, requireSameOrigin, a
     // Clear content from garbage Trial rows (batch update)
     const clearBatch = [];
     for (const row of garbageRows) {
-      clearBatch.push({ range: `'Trial 2.0'!A${row}:R${row}`, values: [[...Array(18).fill('')]] });
+      clearBatch.push({ range: `'Trial 2.0'!A${row}:Q${row}`, values: [[...Array(17).fill('')]] });
     }
     // Also clear rows 1757-1763 (known test rows)
     for (let row = 1757; row <= 1763; row++) {
       if (!garbageRows.has(row)) {
-        clearBatch.push({ range: `'Trial 2.0'!A${row}:R${row}`, values: [[...Array(18).fill('')]] });
+        clearBatch.push({ range: `'Trial 2.0'!A${row}:Q${row}`, values: [[...Array(17).fill('')]] });
       }
     }
 

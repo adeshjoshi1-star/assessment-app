@@ -67,6 +67,7 @@ Seeded automatically on fresh deploy — single admin, no registration. Credenti
 
 ### Sheet Write-Back
 - When a tutor submits an assessment with a `sheet_row` value, the server calls Google Sheets API `spreadsheets.values.update` to write **"Demo Done"** into column A of that row.
+- Before Column A or feedback columns T–X are written, the server re-reads the live source Sheet and verifies the phone in Column R together with the tutor/student identity. The portal never writes Column R.
 - Local status changes (dropdown on dashboard) are stored in SQLite only — **not** written back to the sheet.
 
 ## API Endpoints

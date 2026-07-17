@@ -149,6 +149,7 @@ The app also writes:
 - Demo completion status back to the source row.
 - Demo Not Done status when selected by the assigned tutor.
 - Assessment feedback fields into the configured feedback columns.
+- Before writing Demo Done or feedback, the live phone value in source Column R must match the assessment identity. Column R is read-only to the portal.
 - Tutor access-code information only through an explicitly authorized administrative synchronization action.
 
 ### Assessment sheet

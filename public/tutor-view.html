@@ -547,7 +547,9 @@
         if (handleUnauthorized(res, { preserveDraft: true })) return;
         const data = await res.json();
         if (data.success) {
-          alert('Assessment submitted successfully! Demo status updated to "Demo Done".');
+          alert(data.sheetSync === false
+            ? 'Assessment saved, but the Google Sheet update is still pending. Do not submit again; please inform the admin.'
+            : 'Assessment submitted successfully! Demo status updated to "Demo Done".');
           document.getElementById('formModal').classList.remove('open');
           loadDemos();
         } else {

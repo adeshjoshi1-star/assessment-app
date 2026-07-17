@@ -305,7 +305,9 @@
         });
         const data = await res.json();
         if (data.success) {
-          alert('Assessment submitted successfully!');
+          alert(data.sheetSync === false
+            ? 'Assessment saved, but the Google Sheet update is still pending. Do not submit again; please inform the admin.'
+            : 'Assessment submitted successfully!');
           window.location.href = 'dashboard.html';
         } else {
           alert(data.error || 'Submission failed');

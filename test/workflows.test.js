@@ -38,7 +38,19 @@ test('keeps Google Sheets read and write integration', () => {
 test('uses the configured operational source spreadsheet', () => {
   assert.match(server, /process\.env\.SOURCE_SPREADSHEET_ID/);
   assert.match(server, /1xxq44ok6l6E0OHQ5-VK8sqMuIwxh1e9G2dbTlnAubF0/);
+  assert.match(server, /range: "'Trial 2\.0'!A:X"/);
+  assert.match(server, /feedbackPresent: Boolean\(String\(row\[19\]/);
+  assert.match(server, /Feedback already exists in Column T/);
+});
+
+test('verifies Column R before writing assessment results', () => {
+  assert.match(server, /findPhoneVerifiedTrialEntry/);
+  assert.match(server, /normalizePhoneForMatch\(row\[17\]\) !== expected/);
   assert.match(server, /range: "'Trial 2\.0'!A:R"/);
+  assert.match(server, /retrySheetOperation\(\(\) => updateSheetRow/);
+  assert.match(server, /retrySheetOperation\(\(\) => writeAssessmentFeedbackToTrialSheet/);
+  assert.doesNotMatch(server, /appendToSheet/);
+  assert.doesNotMatch(server, /range: "'Trial 2\.0'!A:R",\s*valueInputOption/);
 });
 
 test('resolves the actual assessment worksheet tab instead of assuming Sheet1', () => {
