@@ -502,6 +502,8 @@
 
     document.getElementById('assessmentForm').addEventListener('submit', async (e) => {
       e.preventDefault();
+      const form = e.currentTarget;
+      if (form.dataset.submitting === 'true') return;
       const level = document.getElementById('form_level').value;
 
       const getChecked = (group) => {
@@ -538,6 +540,10 @@
         return;
       }
 
+      const submitButton = form.querySelector('button[type="submit"]');
+      form.dataset.submitting = 'true';
+      submitButton.disabled = true;
+      submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting…';
       try {
         const res = await fetch('/api/assessments', {
           method: 'POST',
@@ -557,6 +563,10 @@
         }
       } catch (err) {
         alert('Server error. Is the server running?');
+      } finally {
+        form.dataset.submitting = 'false';
+        submitButton.disabled = false;
+        submitButton.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Assessment';
       }
     });
 

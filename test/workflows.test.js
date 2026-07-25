@@ -53,6 +53,17 @@ test('verifies Column R before writing assessment results', () => {
   assert.doesNotMatch(server, /range: "'Trial 2\.0'!A:R",\s*valueInputOption/);
 });
 
+test('allows a phone-verified source row whose student-name cell is empty', () => {
+  assert.match(server, /const required = \[tutor_name, slot, student_age, language, level, feedback, date, time\]/);
+});
+
+test('prevents accidental double submission from the tutor form', () => {
+  const tutorView = fs.readFileSync(path.join(root, 'public', 'tutor-view.html'), 'utf8');
+  assert.match(tutorView, /form\.dataset\.submitting === 'true'/);
+  assert.match(tutorView, /submitButton\.disabled = true/);
+  assert.match(tutorView, /finally \{/);
+});
+
 test('resolves the actual assessment worksheet tab instead of assuming Sheet1', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   assert.match(server, /resolveAssessmentSheetTab/);

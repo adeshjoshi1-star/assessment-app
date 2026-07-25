@@ -533,7 +533,10 @@ app.get('/api/topics/:level', (req, res) => {
 app.post('/api/assessments', requireAuth, requireSameOrigin, async (req, res) => {
   try {
     const { tutor_name, phone, slot, student_name, student_age, language, level, topics_known, topics_covered, start_topic, revision_topics, feedback, interest_level, additional_remarks, date, time, sheet_row } = req.body;
-    const required = [tutor_name, slot, student_name, student_age, language, level, feedback, date, time];
+    // Some source rows legitimately have no student name, but still have a verified
+    // phone number in Column R. The row, tutor and schedule checks below keep those
+    // submissions tied to the correct demo without inventing or changing Sheet data.
+    const required = [tutor_name, slot, student_age, language, level, feedback, date, time];
     if (required.some(value => typeof value !== 'string' || !value.trim()) || !Number.isInteger(Number(interest_level)) || Number(interest_level) < 1 || Number(interest_level) > 5) {
       return res.status(400).json({ error: 'Required fields missing' });
     }
