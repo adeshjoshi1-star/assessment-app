@@ -64,6 +64,15 @@ test('prevents accidental double submission from the tutor form', () => {
   assert.match(tutorView, /finally \{/);
 });
 
+test('supports explicit admin creation of new tutors with generated codes', () => {
+  const adminTutors = fs.readFileSync(path.join(root, 'public', 'admin-tutors.html'), 'utf8');
+  assert.match(adminTutors, /id="addTutorForm"/);
+  assert.match(adminTutors, /Add Tutor &amp; Generate Code/);
+  assert.match(server, /code = generateTutorCode\(name, existingCodes\)/);
+  assert.match(server, /await syncTutorCodesToSheet\(\)/);
+  assert.match(server, /await syncSheet\(\)/);
+});
+
 test('resolves the actual assessment worksheet tab instead of assuming Sheet1', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   assert.match(server, /resolveAssessmentSheetTab/);

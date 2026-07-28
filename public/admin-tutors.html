@@ -64,6 +64,18 @@
           <p>View all tutors, their codes, and demo statistics.</p>
         </div>
 
+        <div class="card" style="margin-bottom:20px">
+          <h2>Add Tutor</h2>
+          <form id="addTutorForm" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+            <div style="flex:1;min-width:220px">
+              <label for="newTutorName">Tutor Name</label>
+              <input id="newTutorName" type="text" required maxlength="200" placeholder="Enter the tutor's full name">
+            </div>
+            <button class="btn btn-primary" type="submit">Add Tutor &amp; Generate Code</button>
+          </form>
+          <p id="addTutorResult" style="display:none;margin-top:12px;font-weight:600"></p>
+        </div>
+
         <div class="stats-grid">
           <div class="card">
             <h2>Select Tutor</h2>
@@ -146,6 +158,37 @@
         </tr>`;
       }).join('');
     }
+
+    document.getElementById('addTutorForm').addEventListener('submit', async function(event) {
+      event.preventDefault();
+      const nameInput = document.getElementById('newTutorName');
+      const result = document.getElementById('addTutorResult');
+      const button = this.querySelector('button[type="submit"]');
+      const name = nameInput.value.trim();
+      if (!name) return;
+      button.disabled = true;
+      result.style.display = 'none';
+      try {
+        const response = await fetch('/api/admin/tutors', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Unable to add tutor');
+        result.textContent = `${data.name} added. Login code: ${data.code}`;
+        result.style.color = '#16a34a';
+        result.style.display = 'block';
+        nameInput.value = '';
+        await loadAll();
+      } catch (error) {
+        result.textContent = error.message;
+        result.style.color = '#dc2626';
+        result.style.display = 'block';
+      } finally {
+        button.disabled = false;
+      }
+    });
 
     document.getElementById('tutorDropdown').addEventListener('change', function() {
       const name = this.value;

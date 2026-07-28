@@ -358,13 +358,25 @@ app.get('/api/admin/tutors', requireAuth, requireAdmin, (req, res) => {
   res.json(deduped);
 });
 
-app.post('/api/admin/tutors', requireAuth, requireAdmin, requireSameOrigin, (req, res) => {
+app.post('/api/admin/tutors', requireAuth, requireAdmin, requireSameOrigin, async (req, res) => {
   try {
-    const { name, code } = req.body;
-    if (!name || !code) {
-      return res.status(400).json({ error: 'Name and code are required' });
+    const name = String(req.body.name || '').trim();
+    let code = String(req.body.code || '').trim();
+    if (!name) {
+      return res.status(400).json({ error: 'Name is required' });
     }
-    if (code.length < 3) {
+    const duplicate = db.prepare("SELECT id FROM users WHERE role = 'teacher' AND lower(trim(name)) = lower(?)").get(name);
+    if (duplicate) {
+      return res.status(409).json({ error: 'This tutor already exists' });
+    }
+    if (!code) {
+      const existingCodes = new Set(
+        db.prepare("SELECT code FROM users WHERE role = 'teacher' AND code IS NOT NULL AND code != ''")
+          .all()
+          .map(row => row.code)
+      );
+      code = generateTutorCode(name, existingCodes);
+    } else if (code.length < 3) {
       return res.status(400).json({ error: 'Code must be at least 3 characters' });
     }
     const existing = db.prepare('SELECT id FROM users WHERE code = ?').get(code);
@@ -374,7 +386,9 @@ app.post('/api/admin/tutors', requireAuth, requireAdmin, requireSameOrigin, (req
     const dummyEmail = `tutor_${code}@internal.local`;
     const dummyPass = bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), 10);
     db.prepare('INSERT INTO users (name, email, password, role, code) VALUES (?, ?, ?, ?, ?)').run(name, dummyEmail, dummyPass, 'teacher', code);
-    res.json({ success: true });
+    await syncTutorCodesToSheet();
+    await syncSheet();
+    res.json({ success: true, name, code });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
