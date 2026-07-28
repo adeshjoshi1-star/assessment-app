@@ -395,12 +395,23 @@ app.post('/api/admin/tutors', requireAuth, requireAdmin, requireSameOrigin, asyn
   }
 });
 
-app.delete('/api/admin/tutors/:id', requireAuth, requireAdmin, requireSameOrigin, (req, res) => {
-  const tutor = db.prepare('SELECT id, role FROM users WHERE id = ?').get(req.params.id);
-  if (!tutor) return res.status(404).json({ error: 'Tutor not found' });
-  if (tutor.role === 'admin') return res.status(403).json({ error: 'Cannot delete admin users' });
-  db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
-  res.json({ success: true });
+app.delete('/api/admin/tutors/:id', requireAuth, requireAdmin, requireSameOrigin, async (req, res) => {
+  try {
+    const tutor = db.prepare('SELECT id, name, code, role FROM users WHERE id = ?').get(req.params.id);
+    if (!tutor) return res.status(404).json({ error: 'Tutor not found' });
+    if (tutor.role === 'admin') return res.status(403).json({ error: 'Cannot delete admin users' });
+    const assessmentCount = db.prepare('SELECT COUNT(*) AS count FROM assessments WHERE user_id = ?').get(tutor.id).count;
+    if (assessmentCount > 0) {
+      return res.status(409).json({ error: 'This tutor has assessment history and cannot be deleted' });
+    }
+    db.prepare('DELETE FROM users WHERE id = ?').run(tutor.id);
+    await syncTutorCodesToSheet();
+    await syncSheet();
+    res.json({ success: true, name: tutor.name, code: tutor.code });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 app.post('/api/admin/tutors/:id/reset-code', requireAuth, requireAdmin, requireSameOrigin, (req, res) => {

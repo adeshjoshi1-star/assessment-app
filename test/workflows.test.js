@@ -73,6 +73,15 @@ test('supports explicit admin creation of new tutors with generated codes', () =
   assert.match(server, /await syncSheet\(\)/);
 });
 
+test('protects assessment history when deleting accidental tutor accounts', () => {
+  const adminTutors = fs.readFileSync(path.join(root, 'public', 'admin-tutors.html'), 'utf8');
+  assert.match(adminTutors, /async function deleteTutor/);
+  assert.match(adminTutors, /method: 'DELETE'/);
+  assert.match(server, /SELECT COUNT\(\*\) AS count FROM assessments WHERE user_id = \?/);
+  assert.match(server, /has assessment history and cannot be deleted/);
+  assert.match(server, /res\.json\(\{ success: true, name: tutor\.name, code: tutor\.code \}\)/);
+});
+
 test('resolves the actual assessment worksheet tab instead of assuming Sheet1', () => {
   const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
   assert.match(server, /resolveAssessmentSheetTab/);
