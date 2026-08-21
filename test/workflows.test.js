@@ -64,6 +64,13 @@ test('prevents accidental double submission from the tutor form', () => {
   assert.match(tutorView, /finally \{/);
 });
 
+test('renders the required recommended start topic for Advanced assessments', () => {
+  const tutorView = fs.readFileSync(path.join(root, 'public', 'tutor-view.html'), 'utf8');
+  assert.match(tutorView, /const startTopicField =/);
+  assert.match(tutorView, /id="start_\$\{level\}"/);
+  assert.match(tutorView, /No topic checklists for \$\{level\} level\.<\/p>\$\{startTopicField\}/);
+});
+
 test('supports explicit admin creation of new tutors with generated codes', () => {
   const adminTutors = fs.readFileSync(path.join(root, 'public', 'admin-tutors.html'), 'utf8');
   assert.match(adminTutors, /id="addTutorForm"/);
