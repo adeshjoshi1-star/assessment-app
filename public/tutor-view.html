@@ -438,7 +438,14 @@
 
     function buildLevelSection(level) {
       const topics = TOPICS[level] || [];
-      if (!topics.length) return `<p style="color:var(--text-secondary);font-size:0.85rem">No topic checklists for ${level} level.</p>`;
+      const startTopicField = `
+        <div style="margin-top:12px">
+          <label for="start_${level}" style="font-weight:600">Recommended Start Topic</label>
+          <input type="text" id="start_${level}" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-size:0.9rem;box-sizing:border-box;margin-top:4px" placeholder="e.g. Start from advanced concepts">
+        </div>`;
+      if (!topics.length) {
+        return `<p style="color:var(--text-secondary);font-size:0.85rem">No topic checklists for ${level} level.</p>${startTopicField}`;
+      }
       const groupTpl = (group, label) => `
         <div style="margin-top:10px">
           <label style="font-weight:600">${label}</label>
@@ -452,10 +459,7 @@
       return `
         ${groupTpl(`known-${level}`, `${level} — Topics Already Known`)}
         ${groupTpl(`covered-${level}`, `${level} — Topics Covered During Demo`)}
-        <div style="margin-top:12px">
-          <label for="start_${level}" style="font-weight:600">Recommended Start Topic</label>
-          <input type="text" id="start_${level}" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-size:0.9rem;box-sizing:border-box;margin-top:4px" placeholder="e.g. Start from Functions">
-        </div>
+        ${startTopicField}
         ${groupTpl(`revision-${level}`, `${level} — Topics Needing Revision`)}`;
     }
 
