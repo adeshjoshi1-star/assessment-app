@@ -22,6 +22,10 @@ if (DB_PATH === '/data/data.db' && !fs.existsSync(DB_PATH) && fs.existsSync(LOCA
 const db = new Database(DB_PATH);
 const IS_VOLUME_DATABASE = DB_PATH !== LOCAL_PATH;
 const ALLOW_DB_BOOTSTRAP = process.env.ALLOW_DB_BOOTSTRAP === 'true' || !IS_VOLUME_DATABASE;
+const ASSESSMENT_INTEGRATION_ENABLED = process.env.ASSESSMENT_INTEGRATION_ENABLED === 'true';
+const ASSESSMENT_INTEGRATION_URL = (process.env.ASSESSMENT_INTEGRATION_URL || '').trim();
+const ASSESSMENT_INTEGRATION_SECRET = process.env.ASSESSMENT_INTEGRATION_SECRET || '';
+const SHADOW_READ_ONLY_SHEETS = process.env.SHADOW_READ_ONLY_SHEETS === 'true';
 
 
 if (ALLOW_DB_BOOTSTRAP) db.exec(`
@@ -76,6 +80,74 @@ if (ALLOW_DB_BOOTSTRAP) {
     if (!db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table)) {
       throw new Error(`Required table ${table} is missing; database bootstrap is disabled`);
     }
+  }
+}
+
+// Additive outbox: the existing assessment save remains authoritative, while this
+// queue gives the LeadSquared shadow sync independent retries and idempotency.
+db.exec(`CREATE TABLE IF NOT EXISTS assessment_integration_outbox (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  assessment_id INTEGER NOT NULL UNIQUE,
+  payload TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_error TEXT,
+  completed_at DATETIME,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+)`);
+
+function enqueueAssessmentIntegration(assessmentId, payload) {
+  if (!ASSESSMENT_INTEGRATION_ENABLED) return false;
+  db.prepare(`INSERT INTO assessment_integration_outbox (assessment_id, payload)
+    VALUES (?, ?) ON CONFLICT(assessment_id) DO UPDATE SET payload=excluded.payload, updated_at=CURRENT_TIMESTAMP`)
+    .run(assessmentId, JSON.stringify(payload));
+  return true;
+}
+
+let assessmentIntegrationWorkerRunning = false;
+async function processAssessmentIntegrationOutbox() {
+  if (assessmentIntegrationWorkerRunning || !ASSESSMENT_INTEGRATION_ENABLED) return;
+  if (!ASSESSMENT_INTEGRATION_URL || !ASSESSMENT_INTEGRATION_SECRET) {
+    console.error('Assessment integration is enabled but URL or secret is missing');
+    return;
+  }
+  assessmentIntegrationWorkerRunning = true;
+  try {
+    const jobs = db.prepare(`SELECT * FROM assessment_integration_outbox
+      WHERE status IN ('pending','retrying') AND next_attempt_at <= CURRENT_TIMESTAMP
+      ORDER BY created_at LIMIT 10`).all();
+    for (const job of jobs) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000);
+        let response;
+        try {
+          response = await fetch(ASSESSMENT_INTEGRATION_URL, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'x-assessment-app-secret': ASSESSMENT_INTEGRATION_SECRET },
+            body: job.payload,
+            signal: controller.signal,
+          });
+        } finally {
+          clearTimeout(timeout);
+        }
+        const responseBody = await response.text();
+        if (!response.ok) throw new Error(`Integration ${response.status}: ${responseBody.slice(0, 300)}`);
+        db.prepare(`UPDATE assessment_integration_outbox SET status='completed', completed_at=CURRENT_TIMESTAMP,
+          last_error=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(job.id);
+      } catch (error) {
+        const attempts = job.attempt_count + 1;
+        const delaySeconds = Math.min(3600, 30 * (2 ** attempts));
+        const nextAttempt = new Date(Date.now() + delaySeconds * 1000).toISOString();
+        db.prepare(`UPDATE assessment_integration_outbox SET status='retrying', attempt_count=?,
+          next_attempt_at=?, last_error=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`)
+          .run(attempts, nextAttempt, String(error?.message || error).slice(0, 1000), job.id);
+      }
+    }
+  } finally {
+    assessmentIntegrationWorkerRunning = false;
   }
 }
 
@@ -623,6 +695,25 @@ app.post('/api/assessments', requireAuth, requireSameOrigin, async (req, res) =>
       feedback, interest_level || 0, additional_remarks || '', date || '', time || '',
       resolvedSheetRow
     );
+    const leadSquaredQueued = enqueueAssessmentIntegration(Number(result.lastInsertRowid), {
+      sourceAssessmentId: String(result.lastInsertRowid),
+      tutorName: tutor_name,
+      phone: resolvedPhone,
+      studentName: student_name,
+      studentAge: student_age,
+      language,
+      assessedLevel: level,
+      topicsKnown: topics_known || [],
+      topicsCovered: topics_covered || [],
+      recommendedStartTopic: start_topic,
+      revisionTopics: revision_topics || [],
+      tutorFeedback: feedback,
+      interestScore: Number(interest_level),
+      additionalRemarks: additional_remarks,
+      date,
+      time,
+      sheetRow: resolvedSheetRow,
+    });
     const trialRow = resolvedSheetRow;
     db.prepare("INSERT INTO sheet_statuses (row_number, status, demo_status) VALUES (?, ?, ?) ON CONFLICT(row_number) DO UPDATE SET status = ?, demo_status = ?, updated_at = CURRENT_TIMESTAMP").run(trialRow, 'Demo Done', 'Demo Done', 'Demo Done', 'Demo Done');
     const entry = sheetDataCache.find(e => e.row === trialRow);
@@ -644,8 +735,10 @@ app.post('/api/assessments', requireAuth, requireSameOrigin, async (req, res) =>
       success: true,
       sheetSync: demoDoneWritten && feedbackWritten,
       assessmentLogSync: assessmentLogged,
+      leadSquaredSync: leadSquaredQueued ? 'queued' : 'disabled',
       warning: demoDoneWritten && feedbackWritten ? undefined : 'Assessment saved, but one or more Sheet updates are still pending.',
     });
+    if (leadSquaredQueued) setImmediate(processAssessmentIntegrationOutbox);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -775,9 +868,17 @@ if (process.env.GOOGLE_CREDENTIALS_JSON) {
 function getSheetsClient() {
   const auth = new google.auth.GoogleAuth({
     keyFilename: CREDENTIALS_PATH,
-    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    scopes: [SHADOW_READ_ONLY_SHEETS
+      ? 'https://www.googleapis.com/auth/spreadsheets.readonly'
+      : 'https://www.googleapis.com/auth/spreadsheets'],
   });
   return google.sheets({ version: 'v4', auth });
+}
+
+function skipShadowSheetWrite(operation) {
+  if (!SHADOW_READ_ONLY_SHEETS) return false;
+  console.log(`Shadow read-only mode: skipped Google Sheets write (${operation})`);
+  return true;
 }
 
 function normalizePhoneForMatch(value) {
@@ -831,6 +932,7 @@ async function retrySheetOperation(operation, attempts = 3) {
 
 async function updateSheetRow(row, status) {
   if (!row) { console.error('updateSheetRow called with invalid row:', row); return; }
+  if (skipShadowSheetWrite('update demo status')) return true;
   try {
     const sheets = getSheetsClient();
     await sheets.spreadsheets.values.update({
@@ -866,6 +968,7 @@ async function resolveAssessmentSheetTab(sheets = getSheetsClient()) {
 }
 
 async function initAssessmentSheet() {
+  if (skipShadowSheetWrite('initialize assessment sheet')) return true;
   try {
     const sheets = getSheetsClient();
     const tab = await resolveAssessmentSheetTab(sheets);
@@ -890,6 +993,7 @@ async function initAssessmentSheet() {
 }
 
 async function appendAssessmentToSheet(data) {
+  if (skipShadowSheetWrite('append assessment log')) return true;
   try {
     const sheets = getSheetsClient();
     const tab = await resolveAssessmentSheetTab(sheets);
@@ -930,6 +1034,7 @@ async function appendAssessmentToSheet(data) {
 
 async function writeAssessmentFeedbackToTrialSheet(row, data) {
   if (!row) return;
+  if (skipShadowSheetWrite('write assessment feedback')) return true;
   try {
     const sheets = getSheetsClient();
     const vals = [[data.feedback || '', (data.topics_known || []).join(', '), (data.topics_covered || []).join(', '), data.start_topic || '', data.additional_remarks || '']];
@@ -947,6 +1052,7 @@ async function writeAssessmentFeedbackToTrialSheet(row, data) {
 }
 
 async function syncTutorCodesToSheet() {
+  if (skipShadowSheetWrite('sync tutor codes')) return true;
   try {
     const tutors = db.prepare("SELECT name, code FROM users WHERE role = 'teacher' AND code IS NOT NULL AND code != '' ORDER BY name ASC").all();
     if (!tutors.length) return;
@@ -2201,3 +2307,9 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
 });
+
+if (ASSESSMENT_INTEGRATION_ENABLED) {
+  setImmediate(processAssessmentIntegrationOutbox);
+  const integrationTimer = setInterval(processAssessmentIntegrationOutbox, 30000);
+  integrationTimer.unref();
+}
