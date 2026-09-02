@@ -25,6 +25,7 @@ const ALLOW_DB_BOOTSTRAP = process.env.ALLOW_DB_BOOTSTRAP === 'true' || !IS_VOLU
 const ASSESSMENT_INTEGRATION_ENABLED = process.env.ASSESSMENT_INTEGRATION_ENABLED === 'true';
 const ASSESSMENT_INTEGRATION_URL = (process.env.ASSESSMENT_INTEGRATION_URL || '').trim();
 const ASSESSMENT_INTEGRATION_SECRET = process.env.ASSESSMENT_INTEGRATION_SECRET || '';
+const SHADOW_READ_ONLY_SHEETS = process.env.SHADOW_READ_ONLY_SHEETS === 'true';
 
 
 if (ALLOW_DB_BOOTSTRAP) db.exec(`
@@ -867,9 +868,17 @@ if (process.env.GOOGLE_CREDENTIALS_JSON) {
 function getSheetsClient() {
   const auth = new google.auth.GoogleAuth({
     keyFilename: CREDENTIALS_PATH,
-    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    scopes: [SHADOW_READ_ONLY_SHEETS
+      ? 'https://www.googleapis.com/auth/spreadsheets.readonly'
+      : 'https://www.googleapis.com/auth/spreadsheets'],
   });
   return google.sheets({ version: 'v4', auth });
+}
+
+function skipShadowSheetWrite(operation) {
+  if (!SHADOW_READ_ONLY_SHEETS) return false;
+  console.log(`Shadow read-only mode: skipped Google Sheets write (${operation})`);
+  return true;
 }
 
 function normalizePhoneForMatch(value) {
@@ -923,6 +932,7 @@ async function retrySheetOperation(operation, attempts = 3) {
 
 async function updateSheetRow(row, status) {
   if (!row) { console.error('updateSheetRow called with invalid row:', row); return; }
+  if (skipShadowSheetWrite('update demo status')) return true;
   try {
     const sheets = getSheetsClient();
     await sheets.spreadsheets.values.update({
@@ -958,6 +968,7 @@ async function resolveAssessmentSheetTab(sheets = getSheetsClient()) {
 }
 
 async function initAssessmentSheet() {
+  if (skipShadowSheetWrite('initialize assessment sheet')) return true;
   try {
     const sheets = getSheetsClient();
     const tab = await resolveAssessmentSheetTab(sheets);
@@ -982,6 +993,7 @@ async function initAssessmentSheet() {
 }
 
 async function appendAssessmentToSheet(data) {
+  if (skipShadowSheetWrite('append assessment log')) return true;
   try {
     const sheets = getSheetsClient();
     const tab = await resolveAssessmentSheetTab(sheets);
@@ -1022,6 +1034,7 @@ async function appendAssessmentToSheet(data) {
 
 async function writeAssessmentFeedbackToTrialSheet(row, data) {
   if (!row) return;
+  if (skipShadowSheetWrite('write assessment feedback')) return true;
   try {
     const sheets = getSheetsClient();
     const vals = [[data.feedback || '', (data.topics_known || []).join(', '), (data.topics_covered || []).join(', '), data.start_topic || '', data.additional_remarks || '']];
@@ -1039,6 +1052,7 @@ async function writeAssessmentFeedbackToTrialSheet(row, data) {
 }
 
 async function syncTutorCodesToSheet() {
+  if (skipShadowSheetWrite('sync tutor codes')) return true;
   try {
     const tutors = db.prepare("SELECT name, code FROM users WHERE role = 'teacher' AND code IS NOT NULL AND code != '' ORDER BY name ASC").all();
     if (!tutors.length) return;
