@@ -35,6 +35,15 @@ test('keeps Google Sheets read and write integration', () => {
   assert.match(server, /spreadsheets\.values\.batchUpdate/);
 });
 
+test('supports a read-only Google Sheets shadow mode', () => {
+  assert.match(server, /process\.env\.SHADOW_READ_ONLY_SHEETS === 'true'/);
+  assert.match(server, /spreadsheets\.readonly/);
+  assert.match(server, /skipShadowSheetWrite\('update demo status'\)/);
+  assert.match(server, /skipShadowSheetWrite\('write assessment feedback'\)/);
+  assert.match(server, /skipShadowSheetWrite\('append assessment log'\)/);
+  assert.match(server, /skipShadowSheetWrite\('sync tutor codes'\)/);
+});
+
 test('uses the configured operational source spreadsheet', () => {
   assert.match(server, /process\.env\.SOURCE_SPREADSHEET_ID/);
   assert.match(server, /1xxq44ok6l6E0OHQ5-VK8sqMuIwxh1e9G2dbTlnAubF0/);
