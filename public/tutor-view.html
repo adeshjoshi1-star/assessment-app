@@ -18,6 +18,8 @@
       background:var(--surface); color:var(--text); font-size:0.9rem; box-sizing:border-box;
     }
     .assessment-form-grid textarea { min-height:70px; resize:vertical; }
+    .lsq-char-count { margin-top:5px; font-size:0.75rem; color:var(--text-secondary); }
+    .lsq-char-count.over-limit { color:#b42318; font-weight:700; }
     .modal .btn { margin-top:16px; }
   </style>
 </head>
@@ -163,6 +165,7 @@
       Intermediate: ['Tournament Rules','Phases of the Game','Italian Game','Smothered mate','Sicilian Defense','Desperado and zwichenswang','Windmill','Ruy Lopez','Remove and destroy','Zugzwang','Italian bc5','King opposition','Rook endgames','Naidorf','King and pawn','Passed pawn','d4 Opening Basics','Outpost','Open file','d5/Nf6','Rook 7th rank','Double bishop mate','Reti'],
       Advanced: []
     };
+    const LEADSQUARED_TEXT_LIMIT = 200;
 
     let currentSheetRow = null;
     let tutorName = '';
@@ -448,6 +451,7 @@
             </label>
             ${topics.map(t => `<label style="display:flex;align-items:center;gap:4px;font-size:0.82rem;padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);cursor:pointer"><input type="checkbox" value="${t}"> ${t}</label>`).join('')}
           </div>
+          <div class="lsq-char-count" id="counter-${group}">0/${LEADSQUARED_TEXT_LIMIT} characters for LeadSquared</div>
         </div>`;
       return `
         ${groupTpl(`known-${level}`, `${level} — Topics Already Known`)}
@@ -457,6 +461,20 @@
           <input type="text" id="start_${level}" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-size:0.9rem;box-sizing:border-box;margin-top:4px" placeholder="e.g. Start from Functions">
         </div>
         ${groupTpl(`revision-${level}`, `${level} — Topics Needing Revision`)}`;
+    }
+
+    function updateLeadSquaredTopicCounter(group) {
+      const container = document.querySelector(`[data-group="${group}"]`);
+      const counter = document.getElementById(`counter-${group}`);
+      if (!container || !counter) return;
+      const value = Array.from(container.querySelectorAll('label:not(.select-all-cb) input[type="checkbox"]:checked'))
+        .map(input => input.value)
+        .join(', ');
+      const excess = Math.max(0, value.length - LEADSQUARED_TEXT_LIMIT);
+      counter.textContent = excess
+        ? `${value.length}/${LEADSQUARED_TEXT_LIMIT} characters — exceeds by ${excess}; LeadSquared entry will be shortened automatically`
+        : `${value.length}/${LEADSQUARED_TEXT_LIMIT} characters for LeadSquared`;
+      counter.classList.toggle('over-limit', excess > 0);
     }
 
     function openForm(row, tutorNameParam, studentName, slot, date, time, age, language) {
@@ -485,12 +503,16 @@
       if (e.target === e.currentTarget) document.getElementById('formModal').classList.remove('open');
     });
     document.getElementById('formModal').addEventListener('change', (e) => {
-      const cb = e.target.closest('.select-all-cb input[type=checkbox]');
-      if (!cb) return;
-      const group = cb.closest('.cb-group');
+      const changed = e.target.closest('.cb-group input[type=checkbox]');
+      if (!changed) return;
+      const group = changed.closest('.cb-group');
       if (!group) return;
-      const checked = cb.checked;
-      group.querySelectorAll('label:not(.select-all-cb) input[type=checkbox]').forEach(i => i.checked = checked);
+      const cb = changed.closest('.select-all-cb') ? changed : null;
+      if (cb) {
+        const checked = cb.checked;
+        group.querySelectorAll('label:not(.select-all-cb) input[type=checkbox]').forEach(i => i.checked = checked);
+      }
+      updateLeadSquaredTopicCounter(group.dataset.group);
     });
 
     document.getElementById('form_level').addEventListener('change', function() {
@@ -509,7 +531,7 @@
       const getChecked = (group) => {
         const container = document.querySelector(`[data-group="${group}"]`);
         if (!container) return [];
-        return Array.from(container.querySelectorAll('input:checked')).map(cb => cb.value);
+        return Array.from(container.querySelectorAll('label:not(.select-all-cb) input:checked')).map(cb => cb.value);
       };
 
         const payload = {
