@@ -136,7 +136,8 @@
         <div id="form_level_sections" style="margin-top:12px"></div>
         <div style="margin-top:12px">
           <label>Feedback About Student's Performance *</label>
-          <textarea id="form_feedback" required style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-size:0.9rem;box-sizing:border-box;min-height:60px;resize:vertical"></textarea>
+          <textarea id="form_feedback" required data-lsq-counter="counter-feedback" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-size:0.9rem;box-sizing:border-box;min-height:60px;resize:vertical"></textarea>
+          <div class="lsq-char-count" id="counter-feedback">0/200 characters for LeadSquared</div>
         </div>
         <div style="margin-top:12px">
           <label>Interest Level</label>
@@ -144,7 +145,8 @@
         </div>
         <div style="margin-top:12px">
           <label>Additional Remarks</label>
-          <textarea id="form_remarks" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-size:0.9rem;box-sizing:border-box;min-height:50px;resize:vertical"></textarea>
+          <textarea id="form_remarks" data-lsq-counter="counter-remarks" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-size:0.9rem;box-sizing:border-box;min-height:50px;resize:vertical"></textarea>
+          <div class="lsq-char-count" id="counter-remarks">0/200 characters for LeadSquared</div>
         </div>
         <button type="submit" class="btn btn-primary" style="margin-top:16px"><i class="fas fa-paper-plane"></i> Submit Assessment</button>
       </form>
@@ -458,7 +460,8 @@
         ${groupTpl(`covered-${level}`, `${level} — Topics Covered During Demo`)}
         <div style="margin-top:12px">
           <label for="start_${level}" style="font-weight:600">Recommended Start Topic</label>
-          <input type="text" id="start_${level}" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-size:0.9rem;box-sizing:border-box;margin-top:4px" placeholder="e.g. Start from Functions">
+          <input type="text" id="start_${level}" data-lsq-counter="counter-start-${level}" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-size:0.9rem;box-sizing:border-box;margin-top:4px" placeholder="e.g. Start from Functions">
+          <div class="lsq-char-count" id="counter-start-${level}">0/${LEADSQUARED_TEXT_LIMIT} characters for LeadSquared</div>
         </div>
         ${groupTpl(`revision-${level}`, `${level} — Topics Needing Revision`)}`;
     }
@@ -472,9 +475,31 @@
         .join(', ');
       const excess = Math.max(0, value.length - LEADSQUARED_TEXT_LIMIT);
       counter.textContent = excess
-        ? `${value.length}/${LEADSQUARED_TEXT_LIMIT} characters — exceeds by ${excess}; LeadSquared entry will be shortened automatically`
+        ? `${value.length}/${LEADSQUARED_TEXT_LIMIT} characters — exceeds by ${excess}; assessment cannot be submitted`
         : `${value.length}/${LEADSQUARED_TEXT_LIMIT} characters for LeadSquared`;
       counter.classList.toggle('over-limit', excess > 0);
+    }
+
+    function updateLeadSquaredTextCounter(input) {
+      const counter = document.getElementById(input.dataset.lsqCounter || '');
+      if (!counter) return;
+      const excess = Math.max(0, input.value.length - LEADSQUARED_TEXT_LIMIT);
+      counter.textContent = excess
+        ? `${input.value.length}/${LEADSQUARED_TEXT_LIMIT} characters — exceeds by ${excess}; assessment cannot be submitted`
+        : `${input.value.length}/${LEADSQUARED_TEXT_LIMIT} characters for LeadSquared`;
+      counter.classList.toggle('over-limit', excess > 0);
+    }
+
+    function leadSquaredLimitViolation(payload) {
+      const fields = [
+        ['Topics Already Known', payload.topics_known.join(', ')],
+        ['Topics Covered During Demo', payload.topics_covered.join(', ')],
+        ['Recommended Start Topic', payload.start_topic],
+        ['Topics Needing Revision', payload.revision_topics.join(', ')],
+        ["Feedback About Student's Performance", payload.feedback],
+        ['Additional Remarks', payload.additional_remarks]
+      ];
+      return fields.find(([, value]) => String(value || '').length > LEADSQUARED_TEXT_LIMIT);
     }
 
     function openForm(row, tutorNameParam, studentName, slot, date, time, age, language) {
@@ -492,6 +517,8 @@
       document.getElementById('form_feedback').value = '';
       document.querySelectorAll('input[name="form_interest"]').forEach(r => r.checked = false);
       document.getElementById('form_remarks').value = '';
+      updateLeadSquaredTextCounter(document.getElementById('form_feedback'));
+      updateLeadSquaredTextCounter(document.getElementById('form_remarks'));
       document.getElementById('form_level_sections').innerHTML = '';
       document.getElementById('formModal').classList.add('open');
     }
@@ -513,6 +540,10 @@
         group.querySelectorAll('label:not(.select-all-cb) input[type=checkbox]').forEach(i => i.checked = checked);
       }
       updateLeadSquaredTopicCounter(group.dataset.group);
+    });
+    document.getElementById('formModal').addEventListener('input', (e) => {
+      const input = e.target.closest('[data-lsq-counter]');
+      if (input) updateLeadSquaredTextCounter(input);
     });
 
     document.getElementById('form_level').addEventListener('change', function() {
@@ -559,6 +590,13 @@
       }
       if (level && !payload.start_topic) {
         alert('Please fill in Recommended Start Topic');
+        return;
+      }
+      const limitViolation = leadSquaredLimitViolation(payload);
+      if (limitViolation) {
+        const [field, value] = limitViolation;
+        const excess = String(value).length - LEADSQUARED_TEXT_LIMIT;
+        alert(`${field} exceeds the 200-character LeadSquared limit by ${excess}. Reduce it to 200 characters or fewer before submitting.`);
         return;
       }
 
