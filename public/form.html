@@ -292,7 +292,7 @@
         additional_remarks: document.getElementById('remarks').value
       };
 
-      if (!payload.tutor_name || !payload.date || !payload.time || !payload.slot || !payload.student_name || !payload.student_age || !payload.language || !payload.feedback || !payload.interest_level) {
+      if (!payload.tutor_name || !payload.date || !payload.time || !payload.slot || !payload.student_name || !payload.student_age || !payload.language || !payload.start_topic.trim() || !payload.feedback || !payload.interest_level) {
         alert('Please fill all required fields');
         return;
       }
