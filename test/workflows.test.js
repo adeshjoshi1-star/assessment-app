@@ -54,7 +54,18 @@ test('verifies Column R before writing assessment results', () => {
 });
 
 test('allows a phone-verified source row whose student-name cell is empty', () => {
-  assert.match(server, /const required = \[tutor_name, slot, student_age, language, level, feedback, date, time\]/);
+  assert.match(server, /const required = \[tutor_name, slot, student_age, language, level, start_topic, feedback, date, time\]/);
+});
+
+test('requires a LeadSquared-safe recommended start topic', () => {
+  const tutorView = fs.readFileSync(path.join(root, 'public', 'tutor-view.html'), 'utf8');
+  const legacyForm = fs.readFileSync(path.join(root, 'public', 'form.html'), 'utf8');
+  assert.match(tutorView, /Recommended Start Topic <span/);
+  assert.match(tutorView, /data-lsq-counter="counter-start-\$\{level\}" required aria-required="true"/);
+  assert.match(tutorView, /!payload\.start_topic\.trim\(\)/);
+  assert.match(legacyForm, /!payload\.start_topic\.trim\(\)/);
+  assert.match(server, /\['Recommended Start Topic', start_topic\]/);
+  assert.match(server, /exceeds the 200-character LeadSquared limit/);
 });
 
 test('prevents accidental double submission from the tutor form', () => {
