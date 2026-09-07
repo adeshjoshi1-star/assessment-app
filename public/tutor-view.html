@@ -459,8 +459,8 @@
         ${groupTpl(`known-${level}`, `${level} — Topics Already Known`)}
         ${groupTpl(`covered-${level}`, `${level} — Topics Covered During Demo`)}
         <div style="margin-top:12px">
-          <label for="start_${level}" style="font-weight:600">Recommended Start Topic</label>
-          <input type="text" id="start_${level}" data-lsq-counter="counter-start-${level}" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-size:0.9rem;box-sizing:border-box;margin-top:4px" placeholder="e.g. Start from Functions">
+          <label for="start_${level}" style="font-weight:600">Recommended Start Topic <span style="color:#dc2626" aria-hidden="true">*</span></label>
+          <input type="text" id="start_${level}" data-lsq-counter="counter-start-${level}" required aria-required="true" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-size:0.9rem;box-sizing:border-box;margin-top:4px" placeholder="e.g. Start from Functions">
           <div class="lsq-char-count" id="counter-start-${level}">0/${LEADSQUARED_TEXT_LIMIT} characters for LeadSquared</div>
         </div>
         ${groupTpl(`revision-${level}`, `${level} — Topics Needing Revision`)}`;
@@ -588,7 +588,7 @@
         alert('Please fill in Feedback');
         return;
       }
-      if (level && !payload.start_topic) {
+      if (!payload.start_topic.trim()) {
         alert('Please fill in Recommended Start Topic');
         return;
       }

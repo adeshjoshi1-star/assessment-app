@@ -633,12 +633,26 @@ app.post('/api/assessments', requireAuth, requireSameOrigin, async (req, res) =>
     // Some source rows legitimately have no student name, but still have a verified
     // phone number in Column R. The row, tutor and schedule checks below keep those
     // submissions tied to the correct demo without inventing or changing Sheet data.
-    const required = [tutor_name, slot, student_age, language, level, feedback, date, time];
+    const required = [tutor_name, slot, student_age, language, level, start_topic, feedback, date, time];
     if (required.some(value => typeof value !== 'string' || !value.trim()) || !Number.isInteger(Number(interest_level)) || Number(interest_level) < 1 || Number(interest_level) > 5) {
       return res.status(400).json({ error: 'Required fields missing' });
     }
     if ([tutor_name, phone, slot, student_name, student_age, language, level, start_topic, additional_remarks, date, time].some(value => value && String(value).length > 1000) || feedback.length > 10000) {
       return res.status(400).json({ error: 'One or more fields are too long' });
+    }
+    const leadSquaredFields = [
+      ['Topics Already Known', (topics_known || []).join(', ')],
+      ['Topics Covered During Demo', (topics_covered || []).join(', ')],
+      ['Recommended Start Topic', start_topic],
+      ['Topics Needing Revision', (revision_topics || []).join(', ')],
+      ["Feedback About Student's Performance", feedback],
+      ['Additional Remarks', additional_remarks],
+    ];
+    const overLimit = leadSquaredFields.find(([, value]) => String(value || '').length > 200);
+    if (overLimit) {
+      return res.status(400).json({
+        error: `${overLimit[0]} exceeds the 200-character LeadSquared limit`,
+      });
     }
     if (req.session.role === 'teacher' && !sameTutorName(req.session.name, tutor_name)) {
       return res.status(403).json({ error: 'Tutor access denied' });
